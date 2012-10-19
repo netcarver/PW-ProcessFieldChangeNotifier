@@ -44,7 +44,7 @@ class ProcessFieldChangeNotifier extends Process {
 			$new      = wire()->input->post->$change;				// read the new value for the field
 			$watches  = @$this->watches_index[ $change ][ $new ];	// pull the watches on the field+new value combination
 
-			if (empty($watches))									// Try for wildcard matches on field if nothing more specific available
+			if (empty($watches))									// Try for wildcard matches on new field value if nothing more specific available
 				$watches = @$this->watches_index[ $change ][ '*' ];
 
 			// Skip this field if no watches on it @ new value...
@@ -64,7 +64,6 @@ class ProcessFieldChangeNotifier extends Process {
 
 					$old   = htmlspecialchars($old);
 					$new   = htmlspecialchars($new);
-					//$roles = wire()->pages->get("id=".$roles)->name;
 					$roles = self::expandPageNames($roles);
 					$this->message("Triggered watch on '$change' going from [$old] => [$new]. Notifications sent to roles [$roles]");
 				}
@@ -104,7 +103,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$table->setEncodeEntities(false);
 		$table->headerRow(array('When this field&#8230;', 'changes from this&#8230;', 'to this&#8230;', 'notify users with role(s)&#8230;', 'Delete'));
 
-		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC");
+		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
 
 		while($row = $result->fetch_assoc()) {
 
@@ -113,7 +112,7 @@ class ProcessFieldChangeNotifier extends Process {
 				 $row['field']  => "edit/?id=$row[id]",
 				 $row['before'],
 				 $row['after'],
-				 self::expandPageNames($row['roles']) => "edit/?id=$row[id]",
+				 self::expandPageNames($row['roles']),
 				 "<input type='checkbox' name='delete[]' value='$row[id]' />"
 				 ));
 		}
@@ -294,8 +293,6 @@ class ProcessFieldChangeNotifier extends Process {
 			PRIMARY KEY(`id`)
 		) ENGINE = INNODB;
 _SQL;
-			#UNIQUE KEY(`field`,`trigger`)
-
 		$this->db->query($sql);
 
 		$p = new Page();
