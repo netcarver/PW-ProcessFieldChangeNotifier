@@ -38,14 +38,16 @@ class ProcessFieldChangeNotifier extends Process {
 
 		foreach($changes as $change) {
 
+			$cid = wire()->fields->get($change)->id;
+
 			// Skip this changed field if no watches setup on it...
-			if( !array_key_exists( $change, $this->watches_index) ) continue;
+			if( !array_key_exists( $cid, $this->watches_index) ) continue;
 
 			$new      = wire()->input->post->$change;				// read the new value for the field
-			$watches  = @$this->watches_index[ $change ][ $new ];	// pull the watches on the field+new value combination
+			$watches  = @$this->watches_index[ $cid ][ $new ];	// pull the watches on the field+new value combination
 
 			if (empty($watches))									// Try for wildcard matches on new field value if nothing more specific available
-				$watches = @$this->watches_index[ $change ][ '*' ];
+				$watches = @$this->watches_index[ $cid ][ '*' ];
 
 			// Skip this field if no watches on it @ new value...
 			if (empty($watches)) continue;
@@ -90,6 +92,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 	protected function triggerMatch( $page, $fname, $old, $new, $roles )
 	{
+		// TODO add email routine
 	}
 
 
@@ -109,7 +112,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 			 // output in table rows with edit link and delete checkbox?
 			 $table->row(array(
-				 $row['field']  => "edit/?id=$row[id]",
+				 wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
 				 $row['before'],
 				 $row['after'],
 				 self::expandPageNames($row['roles']),
@@ -143,7 +146,8 @@ class ProcessFieldChangeNotifier extends Process {
 			// edit existing record
 			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles` FROM {$this->className} WHERE `id`=$id");
 			list($id, $f, $b, $a, $r) = $result->fetch_array();
-			$this->setFuel('processHeadline', "Edit Watch on [$f]");
+			$fname = wire()->fields->get($f)->name;
+			$this->setFuel('processHeadline', "Edit Watch on [$fname]");
 
 		} else {
 			// add new record
@@ -164,11 +168,16 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->value = $id;
 		$form->add($field);
 
-		$field = $this->modules->get("InputfieldText");
+		$field = $this->modules->get("InputfieldSelect");
 		$field->label = 'Select field';
 		$field->description = 'Select a field you wish to watch';
 		$field->name = 'field';
-		$field->value = $f;
+		$fields = wire()->fields;
+		foreach ($fields as $pwf) {
+			$atts = array();
+			if( $pwf->id == $f ) $atts['selected'] = 'selected';
+			$field->addOption( $pwf->id, $pwf->name, $atts );
+		}
 		$form->add($field);
 
 		$field = $this->modules->get("InputfieldText");
@@ -233,7 +242,8 @@ class ProcessFieldChangeNotifier extends Process {
 		$this->saveWatch($f, $b, $a, $r, $id);
 
 		$r = self::expandPageNames($r);
-		$this->message("Watching for field '$f' changing from [$b] => [$a]. When it does, will notify all with role $r.");
+		$fname = wire()->fields->get($f)->name;
+		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify all with role $r.");
 		$this->session->redirect("../"); // back to list
 
 	}
