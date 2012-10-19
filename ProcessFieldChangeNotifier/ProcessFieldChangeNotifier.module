@@ -196,13 +196,6 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->startLabel = "Select role";
 		$field->parent_id = wire()->config->rolesPageID; // tell it to start from the roles 'root' page
 		$field->value = $r;
-
-		/* if(strpos($r, '/') === 0) { */
-		/* 	// if a value is already set, determine if it's a page */
-		/* 	// if it's a page, then populate the input with the page_id */
-		/* 	$page = $this->pages->get($r); */
-		/* 	if($page->id) $field->value = $page->id; */
-		/* } else $page = new NullPage(); */
 		$form->add($field);
 
 		$field = $this->modules->get("InputfieldButton");
