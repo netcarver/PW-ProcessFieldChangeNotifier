@@ -62,11 +62,12 @@ class ProcessFieldChangeNotifier extends Process {
 			foreach( $watches as $watch_old => $roles ) {
 				// trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
 				if( '*' == $watch_old || $watch_old == $old ) {
+					$roles = self::expandPageNames($roles);
+
 					$this->triggerMatch( $page, $change, $watch_old, $new, $roles );
 
 					$old   = htmlspecialchars($old);
 					$new   = htmlspecialchars($new);
-					$roles = self::expandPageNames($roles);
 					$this->message("Triggered watch on '$change' going from [$old] => [$new]. Notifications sent to roles [$roles]");
 				}
 			}
@@ -92,7 +93,32 @@ class ProcessFieldChangeNotifier extends Process {
 
 	protected function triggerMatch( $page, $fname, $old, $new, $roles )
 	{
-		// TODO add email routine
+		$users = wire()->users->find("roles=$roles, include=all" );
+		if (empty($users)) return;
+
+		foreach ($users as $user) {
+			if (empty($user->email)) continue;
+
+			$this->sendEmail( $user->email, $page, $fname, $old, $new );
+		}
+	}
+
+
+	protected function sendEmail( $to, $page, $fname, $old, $new )
+	{
+		$headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
+		$headers[] = "MIME-Version: 1.0";
+		$headers[] = "Content-type: text/plain; charset=UTF-8";
+		$headers[] = "Reply-To: blackhole@".$this->config->httpHost;
+
+		$subject = __(" Change to field : ", __FILE__) . $fname . " detected.";
+		$body[]  = "Field $fname was changed...";
+		$body[]  = "\tFrom:    " . $old;
+		$body[]  = "\tTo:      " . $new;
+		$body[]  = "\tOn Page: " . $page->name;
+
+		$sent = mail($to, $subject, join("\n",$body), join("\n",$headers));
+		return $sent;
 	}
 
 
@@ -175,8 +201,10 @@ class ProcessFieldChangeNotifier extends Process {
 		$fields = wire()->fields;
 		foreach ($fields as $pwf) {
 			$atts = array();
+			$name = $pwf->name;
+			if($pwf->flags & Field::flagSystem) $name .= "*";
 			if( $pwf->id == $f ) $atts['selected'] = 'selected';
-			$field->addOption( $pwf->id, $pwf->name, $atts );
+			$field->addOption( $pwf->id, $name, $atts );
 		}
 		$form->add($field);
 
