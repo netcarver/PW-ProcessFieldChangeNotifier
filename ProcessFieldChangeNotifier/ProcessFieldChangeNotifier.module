@@ -62,13 +62,30 @@ class ProcessFieldChangeNotifier extends Process {
 				if( '*' == $watch_old || $watch_old == $old ) {
 					$this->triggerMatch( $page, $change, $watch_old, $new, $roles );
 
-					$old = htmlspecialchars($old);
-					$new = htmlspecialchars($new);
+					$old   = htmlspecialchars($old);
+					$new   = htmlspecialchars($new);
+					//$roles = wire()->pages->get("id=".$roles)->name;
+					$roles = self::expandRoleNames($roles);
 					$this->message("Triggered watch on '$change' going from [$old] => [$new]. Notifications sent to roles [$roles]");
 				}
 			}
 		}
 
+	}
+
+
+	protected static function expandRoleNames($roles)
+	{
+		$o = array();
+
+		$roles = explode(',', $roles);
+		while (!empty($roles)) {
+			$role = trim(array_pop($roles));
+			$o[] = wire()->pages->get("id=".$role)->name;
+		}
+
+		asort($o);
+		return implode(",", $o);
 	}
 
 
@@ -81,13 +98,13 @@ class ProcessFieldChangeNotifier extends Process {
 	{
 		$this->setFuel('processHeadline', 'Field Change Notifier');
 
-		$description = "<p class='description'>NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.</p>";
+		$description = "<p class='description'>NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.<br />Use a single * in either value column as a wildcard.</p>";
 
 		$table = $this->modules->get("MarkupAdminDataTable");
 		$table->setEncodeEntities(false);
-		$table->headerRow(array('When this field', 'changes from this', 'to this', 'notify users with role(s).', 'Delete'));
+		$table->headerRow(array('When this field&#8230;', 'changes from this&#8230;', 'to this&#8230;', 'notify users with role(s)&#8230;', 'Delete'));
 
-		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY field");
+		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC");
 
 		while($row = $result->fetch_assoc()) {
 
@@ -96,7 +113,7 @@ class ProcessFieldChangeNotifier extends Process {
 				 $row['field']  => "edit/?id=$row[id]",
 				 $row['before'] => "edit/?id=$row[id]",
 				 $row['after']  => "edit/?id=$row[id]",
-				 wire()->pages->get("id=".$row['roles'])->name,
+				 self::expandRoleNames($row['roles']) => "edit/?id=$row[id]",
 				 "<input type='checkbox' name='delete[]' value='$row[id]' />"
 				 ));
 		}
@@ -111,6 +128,7 @@ class ProcessFieldChangeNotifier extends Process {
 		// Is there clean way to add button to right side?
 		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'>" .$table->render() . $button->render() . "</form>";
 	}
+
 
 	/**
 	 * Edit/Add Redirect - Called when the URL is: ./edit/
@@ -174,15 +192,17 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->label = 'Select the role(s) of the users you wish to have notified when this watch triggers';
 		$field->attr('id+name', 'roles');
 		$field->showRootPage = false;
+		$field->showPath = false;
 		$field->startLabel = "Select role";
-		$field->parent_id = 30; // tell it to start from homepage
+		$field->parent_id = wire()->config->rolesPageID; // tell it to start from the roles 'root' page
+		$field->value = $r;
 
-		if(strpos($r, '/') === 0) {
-			// if a value is already set, determine if it's a page
-			// if it's a page, then populate the input with the page_id
-			$page = $this->pages->get($r);
-			if($page->id) $field->value = $page->id;
-		} else $page = new NullPage();
+		/* if(strpos($r, '/') === 0) { */
+		/* 	// if a value is already set, determine if it's a page */
+		/* 	// if it's a page, then populate the input with the page_id */
+		/* 	$page = $this->pages->get($r); */
+		/* 	if($page->id) $field->value = $page->id; */
+		/* } else $page = new NullPage(); */
 		$form->add($field);
 
 		$field = $this->modules->get("InputfieldButton");
@@ -220,7 +240,8 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$this->saveWatch($f, $b, $a, $r, $id);
 
-		$this->message("Saved watch on $f changing from $b to $a => Notify all with role $r.");
+		$r = self::expandRoleNames($r);
+		$this->message("Watching for field '$f' changing from [$b] => [$a]. When it does, will notify all with role $r.");
 		$this->session->redirect("../"); // back to list
 
 	}
