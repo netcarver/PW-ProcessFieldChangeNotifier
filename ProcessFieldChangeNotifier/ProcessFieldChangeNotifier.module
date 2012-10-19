@@ -65,7 +65,7 @@ class ProcessFieldChangeNotifier extends Process {
 					$old   = htmlspecialchars($old);
 					$new   = htmlspecialchars($new);
 					//$roles = wire()->pages->get("id=".$roles)->name;
-					$roles = self::expandRoleNames($roles);
+					$roles = self::expandPageNames($roles);
 					$this->message("Triggered watch on '$change' going from [$old] => [$new]. Notifications sent to roles [$roles]");
 				}
 			}
@@ -74,7 +74,7 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	protected static function expandRoleNames($roles)
+	protected static function expandPageNames($roles)
 	{
 		$o = array();
 
@@ -111,9 +111,9 @@ class ProcessFieldChangeNotifier extends Process {
 			 // output in table rows with edit link and delete checkbox?
 			 $table->row(array(
 				 $row['field']  => "edit/?id=$row[id]",
-				 $row['before'] => "edit/?id=$row[id]",
-				 $row['after']  => "edit/?id=$row[id]",
-				 self::expandRoleNames($row['roles']) => "edit/?id=$row[id]",
+				 $row['before'],
+				 $row['after'],
+				 self::expandPageNames($row['roles']) => "edit/?id=$row[id]",
 				 "<input type='checkbox' name='delete[]' value='$row[id]' />"
 				 ));
 		}
@@ -233,7 +233,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$this->saveWatch($f, $b, $a, $r, $id);
 
-		$r = self::expandRoleNames($r);
+		$r = self::expandPageNames($r);
 		$this->message("Watching for field '$f' changing from [$b] => [$a]. When it does, will notify all with role $r.");
 		$this->session->redirect("../"); // back to list
 
