@@ -1,5 +1,13 @@
 <?php
 
+/**
+ * TODO Fix detection of * => zero values
+ * TODO Add detection of * => empty and empty => * values
+ * TODO Add SMTP support module?
+ * TODO Change from & to inputfields to reflect the type of the watched field.
+ * TODO Allow users to be individually selected using AsmSelect instead of using roles?
+ * TODO Add new watcher-roles to be created on-the-fly and users added to it?
+ **/
 class ProcessFieldChangeNotifier extends Process {
 
 	protected $watches_index = array();
@@ -209,7 +217,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$field = $this->modules->get("InputfieldText");
 		$field->label = 'Before value';
-		$field->description = 'Enter a valid trigger like ! (for changed), =10, !=4 or ="Hello"';
+		$field->description = 'Enter a value like "Hello". Use "*" to mean "Any value"';
 		$field->name = 'before';
 		$field->id = 'before';
 		$field->value = $b;
@@ -217,7 +225,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$field = $this->modules->get("InputfieldText");
 		$field->label = 'After value';
-		$field->description = 'Enter a valid trigger like ! (for changed), =10, !=4 or ="Hello"';
+		$field->description = 'Enter a value like "Hello". Use "*" to mean "Any value"';
 		$field->name = 'after';
 		$field->id = 'after';
 		$field->value = $a;
