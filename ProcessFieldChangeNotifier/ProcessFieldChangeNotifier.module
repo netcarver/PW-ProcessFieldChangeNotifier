@@ -10,7 +10,7 @@ class ProcessFieldChangeNotifier extends Process {
 		return array(
 			'title'     => 'Field Change Notifier',
 			'summary'   => 'Notify users of changes to fields',
-			'version'   => 1,
+			'version'   => 2,
 			'permanent' => false,
 			'autoload'  => true,
 			'singular'  => true,
@@ -43,10 +43,10 @@ class ProcessFieldChangeNotifier extends Process {
 			// Skip this changed field if no watches setup on it...
 			if( !array_key_exists( $cid, $this->watches_index) ) continue;
 
-			$new      = wire()->input->post->$change;				// read the new value for the field
-			$watches  = @$this->watches_index[ $cid ][ $new ];	// pull the watches on the field+new value combination
+			$new      = wire()->input->post->$change;           // read the new value for the field
+			$watches  = @$this->watches_index[ $cid ][ $new ];  // pull the watches on the field+new value combination
 
-			if (empty($watches))									// Try for wildcard matches on new field value if nothing more specific available
+			if (empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
 				$watches = @$this->watches_index[ $cid ][ '*' ];
 
 			// Skip this field if no watches on it @ new value...
@@ -136,7 +136,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		while($row = $result->fetch_assoc()) {
 
-			 // output in table rows with edit link and delete checkbox?
+			 // output in table rows with edit link and delete checkbox
 			 $table->row(array(
 				 wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
 				 $row['before'],
@@ -153,7 +153,6 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$table->action(array('Add watch' => 'edit/?id=0'));
 
-		// Is there clean way to add button to right side?
 		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'>" .$table->render() . $button->render() . "</form>";
 	}
 
@@ -169,14 +168,14 @@ class ProcessFieldChangeNotifier extends Process {
 		$id = (int) $this->input->get->id;
 
 		if($id > 0) {
-			// edit existing record
+			// Edit existing watch
 			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles` FROM {$this->className} WHERE `id`=$id");
 			list($id, $f, $b, $a, $r) = $result->fetch_array();
 			$fname = wire()->fields->get($f)->name;
 			$this->setFuel('processHeadline', "Edit Watch on [$fname]");
 
 		} else {
-			// add new record
+			// Add new watch
 			$id = 0;
 			$f = '';
 			$b = '';
@@ -250,7 +249,6 @@ class ProcessFieldChangeNotifier extends Process {
 
 	/**
 	 * Save Redirect - Called when the URL is ./save/
-	 *
 	 */
 	public function ___executeSave()
 	{
@@ -279,7 +277,6 @@ class ProcessFieldChangeNotifier extends Process {
 
 	public function ___executeDelete()
 	{
-
 		$count = 0;
 
 		if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
