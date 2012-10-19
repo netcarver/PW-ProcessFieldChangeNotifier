@@ -185,20 +185,6 @@ class ProcessFieldChangeNotifier extends Process {
 		} else $page = new NullPage();
 		$form->add($field);
 
-
-
-		// now add a script that makes it automatically populate the redirect_to field
-		// with the URL of the selected page.
-		$script = <<< _END
-_END;
-
-/* <script type="text/javascript"> */
-/* 	$("#select_page").bind('pageSelected', function(event, data) { */
-/* 		 if(data.url.length) $("#redirect_to").val(data.url); */
-/* 	}); */
-/* </script> */
-
-
 		$field = $this->modules->get("InputfieldButton");
 		$field->type = 'submit';
 		if($id > 0 ) {
@@ -209,7 +195,7 @@ _END;
 
 		$form->add($field);
 
-		return $form->render() . $script;
+		return $form->render();
 	}
 
 
