@@ -1,0 +1,316 @@
+<?php
+
+class ProcessFieldChangeNotifier extends Process {
+
+	protected $watches_index = array();
+
+
+	public static function getModuleInfo()
+	{
+		return array(
+			'title'     => 'Field Change Notifier',
+			'summary'   => 'Notify users of changes to fields',
+			'version'   => 1,
+			'permanent' => false,
+			'autoload'  => true,
+			'singular'  => true,
+		);
+	}
+
+
+	public function init()
+	{
+		parent::init();
+
+		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles` FROM `{$this->className}` ORDER BY `field`");
+		while( $row = $result->fetch_assoc()) {
+			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = $row['roles'];
+		}
+
+		wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
+	}
+
+
+	public function hookPagesSaveReady(HookEvent $event)
+	{
+		$page    = $event->arguments[0];
+		$changes = $page->getChanges();
+
+		foreach($changes as $change) {
+
+			// Skip this changed field if no watches setup on it...
+			if( !array_key_exists( $change, $this->watches_index) ) continue;
+
+			$new      = wire()->input->post->$change;				// read the new value for the field
+			$watches  = @$this->watches_index[ $change ][ $new ];	// pull the watches on the field+new value combination
+
+			if (empty($watches))									// Try for wildcard matches on field if nothing more specific available
+				$watches = @$this->watches_index[ $change ][ '*' ];
+
+			// Skip this field if no watches on it @ new value...
+			if (empty($watches)) continue;
+
+			// Get the old value of the field...
+			$db_field = $page->fields->$change->getTable();
+			$p_id     = $page->id;
+			$sql      = "SELECT `data` FROM `$db_field` WHERE `pages_id` = $p_id LIMIT 1";
+			$result   = $this->db->query( $sql )->fetch_assoc();
+			$old      = $result['data'];
+
+			foreach( $watches as $watch_old => $roles ) {
+				// trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
+				if( '*' == $watch_old || $watch_old == $old ) {
+					$this->triggerMatch( $page, $change, $watch_old, $new, $roles );
+
+					$old = htmlspecialchars($old);
+					$new = htmlspecialchars($new);
+					$this->message("Triggered watch on '$change' going from [$old] => [$new]. Notifications sent to roles [$roles]");
+				}
+			}
+		}
+
+	}
+
+
+	protected function triggerMatch( $page, $fname, $old, $new, $roles )
+	{
+	}
+
+
+	public function ___execute()
+	{
+		$this->setFuel('processHeadline', 'Field Change Notifier');
+
+		$description = "<p class='description'>NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.</p>";
+
+		$table = $this->modules->get("MarkupAdminDataTable");
+		$table->setEncodeEntities(false);
+		$table->headerRow(array('When this field', 'changes from this', 'to this', 'notify users with role(s).', 'Delete'));
+
+		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY field");
+
+		while($row = $result->fetch_assoc()) {
+
+			 // output in table rows with edit link and delete checkbox?
+			 $table->row(array(
+				 $row['field']  => "edit/?id=$row[id]",
+				 $row['before'] => "edit/?id=$row[id]",
+				 $row['after']  => "edit/?id=$row[id]",
+				 wire()->pages->get("id=".$row['roles'])->name,
+				 "<input type='checkbox' name='delete[]' value='$row[id]' />"
+				 ));
+		}
+
+		$button = $this->modules->get("InputfieldButton");
+		$button->type  = 'submit';
+		$button->id    = 'submit_delete';
+		$button->value = 'Remove selected watches';
+
+		$table->action(array('Add watch' => 'edit/?id=0'));
+
+		// Is there clean way to add button to right side?
+		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'>" .$table->render() . $button->render() . "</form>";
+	}
+
+	/**
+	 * Edit/Add Redirect - Called when the URL is: ./edit/
+	 */
+	public function ___executeEdit()
+	{
+
+		$this->fuel->breadcrumbs->add(new Breadcrumb('../', 'Field Change Notifier'));
+
+		$id = (int) $this->input->get->id;
+
+		if($id > 0) {
+			// edit existing record
+			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles` FROM {$this->className} WHERE `id`=$id");
+			list($id, $f, $b, $a, $r) = $result->fetch_array();
+			$this->setFuel('processHeadline', "Edit Watch on [$f]");
+
+		} else {
+			// add new record
+			$id = 0;
+			$f = '';
+			$b = '';
+			$a = '';
+			$r = '';
+			$this->setFuel('processHeadline', "Add Watch");
+		}
+
+		$form = $this->modules->get("InputfieldForm");
+		$form->method = 'post';
+		$form->action = '../save/';
+
+		$field = $this->modules->get("InputfieldHidden");
+		$field->name = 'id';
+		$field->value = $id;
+		$form->add($field);
+
+		$field = $this->modules->get("InputfieldText");
+		$field->label = 'Select field';
+		$field->description = 'Select a field you wish to watch';
+		$field->name = 'field';
+		$field->value = $f;
+		$form->add($field);
+
+		$field = $this->modules->get("InputfieldText");
+		$field->label = 'Before value';
+		$field->description = 'Enter a valid trigger like ! (for changed), =10, !=4 or ="Hello"';
+		$field->name = 'before';
+		$field->id = 'before';
+		$field->value = $b;
+		$form->add($field);
+
+		$field = $this->modules->get("InputfieldText");
+		$field->label = 'After value';
+		$field->description = 'Enter a valid trigger like ! (for changed), =10, !=4 or ="Hello"';
+		$field->name = 'after';
+		$field->id = 'after';
+		$field->value = $a;
+		$form->add($field);
+
+		$field = $this->modules->get("InputfieldPageListSelect");
+		$field->label = 'Select the role(s) of the users you wish to have notified when this watch triggers';
+		$field->attr('id+name', 'roles');
+		$field->showRootPage = false;
+		$field->startLabel = "Select role";
+		$field->parent_id = 30; // tell it to start from homepage
+
+		if(strpos($r, '/') === 0) {
+			// if a value is already set, determine if it's a page
+			// if it's a page, then populate the input with the page_id
+			$page = $this->pages->get($r);
+			if($page->id) $field->value = $page->id;
+		} else $page = new NullPage();
+		$form->add($field);
+
+
+
+		// now add a script that makes it automatically populate the redirect_to field
+		// with the URL of the selected page.
+		$script = <<< _END
+_END;
+
+/* <script type="text/javascript"> */
+/* 	$("#select_page").bind('pageSelected', function(event, data) { */
+/* 		 if(data.url.length) $("#redirect_to").val(data.url); */
+/* 	}); */
+/* </script> */
+
+
+		$field = $this->modules->get("InputfieldButton");
+		$field->type = 'submit';
+		if($id > 0 ) {
+			$field->value = 'Update Watch';
+		} else {
+			$field->value = 'Add New Watch';
+		}
+
+		$form->add($field);
+
+		return $form->render() . $script;
+	}
+
+
+	/**
+	 * Save Redirect - Called when the URL is ./save/
+	 *
+	 */
+	public function ___executeSave()
+	{
+
+		$id = (int) $this->input->post->id;
+		$f = $this->input->post->field;
+		$b = $this->input->post->before;
+		$a = $this->input->post->after;
+		$r = $this->input->post->roles;
+
+
+		if ($f == '' || $b == '' || $a == '' || $r == '') {
+			$this->error("No watch created, please check your values.");
+			$this->session->redirect("../"); // back to list
+		}
+
+		$this->saveWatch($f, $b, $a, $r, $id);
+
+		$this->message("Saved watch on $f changing from $b to $a => Notify all with role $r.");
+		$this->session->redirect("../"); // back to list
+
+	}
+
+
+	public function ___executeDelete()
+	{
+
+		$count = 0;
+
+		if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
+			$this->message("Nothing to delete");
+			$this->session->redirect("../"); // back to list
+		}
+
+		foreach($this->input->post->delete as $id) {
+			$id = (int) $id;
+			$this->db->query("DELETE FROM {$this->className} WHERE id=$id");
+			$count++;
+		}
+
+		$this->message("Watches deleted: " . $count);
+		$this->session->redirect("../"); // back to list
+	}
+
+
+
+	private function saveWatch($f, $b, $a, $r, $id = 0)
+	{
+
+		$f = $this->db->escape_string($f);
+		$b = $this->db->escape_string($b);
+		$a = $this->db->escape_string($a);
+		$r = $this->db->escape_string($r);
+
+		if ($id == 0) {
+			$sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r' ON DUPLICATE KEY UPDATE id = id;";
+		} else {
+			$sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r' WHERE id = $id";
+		}
+		return $this->db->query($sql);
+	}
+
+
+
+	public function ___install()
+	{
+		parent::___install();
+
+		$sql = <<< _SQL
+		CREATE TABLE IF NOT EXISTS {$this->className} (
+			`id` int unsigned NOT NULL auto_increment,
+			`field`  varchar(255) NOT NULL DEFAULT '',
+			`before` varchar(255) NOT NULL DEFAULT '',
+			`after`  varchar(255) NOT NULL DEFAULT '',
+			`roles`  varchar(255) NOT NULL DEFAULT '',
+			PRIMARY KEY(`id`)
+		) ENGINE = INNODB;
+_SQL;
+			#UNIQUE KEY(`field`,`trigger`)
+
+		$this->db->query($sql);
+
+		$p = new Page();
+		$p->template = $this->templates->get("admin");
+		$p->parent = $this->pages->get("template=admin, name=setup");
+		$p->title = 'Field Change Notifier';
+		$p->name  = __CLASS__;
+		$p->process = $this;
+		$p->save();
+
+	}
+
+	public function ___uninstall() {
+		$p = $this->pages->get('template=admin, name=' . __CLASS__);
+		$p->delete();
+		$this->db->query("DROP TABLE {$this->className}");
+	}
+}
