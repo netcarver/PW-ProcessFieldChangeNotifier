@@ -4,9 +4,11 @@
  * TODO Fix detection of * => zero values
  * TODO Add detection of * => empty and empty => * values
  * TODO Add SMTP support module?
+ * TODO Add support for empty strings in before/after condition
  * TODO Change from & to inputfields to reflect the type of the watched field.
  * TODO Allow users to be individually selected using AsmSelect instead of using roles?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
+ * TODO Add localised strings
  **/
 class ProcessFieldChangeNotifier extends Process {
 
@@ -31,9 +33,8 @@ class ProcessFieldChangeNotifier extends Process {
 		parent::init();
 
 		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles` FROM `{$this->className}` ORDER BY `field`");
-		while( $row = $result->fetch_assoc()) {
+		while($row = $result->fetch_assoc())
 			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = $row['roles'];
-		}
 
 		wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
 	}
@@ -49,16 +50,17 @@ class ProcessFieldChangeNotifier extends Process {
 			$cid = wire()->fields->get($change)->id;
 
 			// Skip this changed field if no watches setup on it...
-			if( !array_key_exists( $cid, $this->watches_index) ) continue;
+			if(!array_key_exists( $cid, $this->watches_index)) continue;
 
-			$new      = wire()->input->post->$change;           // read the new value for the field
-			$watches  = @$this->watches_index[ $cid ][ $new ];  // pull the watches on the field+new value combination
+			$new     = wire()->input->post->$change;           // read the new value for the field
+			//if(!isset($new)) $new = 0;                         // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
+			$watches = $this->watches_index[ $cid ][ $new ];   // pull the watches on the field+new value combination
 
-			if (empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
+			if(empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
 				$watches = @$this->watches_index[ $cid ][ '*' ];
 
 			// Skip this field if no watches on it @ new value...
-			if (empty($watches)) continue;
+			if(empty($watches)) continue;
 
 			// Get the old value of the field...
 			$db_field = $page->fields->$change->getTable();
@@ -69,7 +71,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 			foreach( $watches as $watch_old => $roles ) {
 				// trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
-				if( '*' == $watch_old || $watch_old == $old ) {
+				if('*' == $watch_old || $watch_old == $old) {
 					$roles = self::expandPageNames($roles);
 
 					$this->triggerMatch( $page, $change, $watch_old, $new, $roles );
@@ -89,7 +91,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$o = array();
 
 		$roles = explode(',', $roles);
-		while (!empty($roles)) {
+		while(!empty($roles)) {
 			$role = trim(array_pop($roles));
 			$o[] = wire()->pages->get("id=".$role)->name;
 		}
@@ -102,10 +104,10 @@ class ProcessFieldChangeNotifier extends Process {
 	protected function triggerMatch( $page, $fname, $old, $new, $roles )
 	{
 		$users = wire()->users->find("roles=$roles, include=all" );
-		if (empty($users)) return;
+		if(empty($users)) return;
 
-		foreach ($users as $user) {
-			if (empty($user->email)) continue;
+		foreach($users as $user) {
+			if(empty($user->email)) continue;
 
 			$this->sendEmail( $user->email, $page, $fname, $old, $new );
 		}
@@ -119,7 +121,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$headers[] = "Content-type: text/plain; charset=UTF-8";
 		$headers[] = "Reply-To: blackhole@".$this->config->httpHost;
 
-		$subject = __(" Change to field : ", __FILE__) . $fname . " detected.";
+		$subject = __(" Change detected in field : ", __FILE__) . $fname;
 		$body[]  = "Field $fname was changed...";
 		$body[]  = "\tFrom:    " . $old;
 		$body[]  = "\tTo:      " . $new;
@@ -180,7 +182,7 @@ class ProcessFieldChangeNotifier extends Process {
 			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles` FROM {$this->className} WHERE `id`=$id");
 			list($id, $f, $b, $a, $r) = $result->fetch_array();
 			$fname = wire()->fields->get($f)->name;
-			$this->setFuel('processHeadline', "Edit Watch on [$fname]");
+			$this->setFuel('processHeadline', "Edit Watch on \"$fname\"");
 
 		} else {
 			// Add new watch
@@ -202,15 +204,15 @@ class ProcessFieldChangeNotifier extends Process {
 		$form->add($field);
 
 		$field = $this->modules->get("InputfieldSelect");
-		$field->label = 'Select field';
+		$field->label = 'Select field to watch';
 		$field->description = 'Select a field you wish to watch';
 		$field->name = 'field';
 		$fields = wire()->fields;
-		foreach ($fields as $pwf) {
+		foreach($fields as $pwf) {
 			$atts = array();
 			$name = $pwf->name;
 			if($pwf->flags & Field::flagSystem) $name .= "*";
-			if( $pwf->id == $f ) $atts['selected'] = 'selected';
+			if($pwf->id == $f) $atts['selected'] = 'selected';
 			$field->addOption( $pwf->id, $name, $atts );
 		}
 		$form->add($field);
@@ -243,12 +245,10 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$field = $this->modules->get("InputfieldButton");
 		$field->type = 'submit';
-		if($id > 0 ) {
+		if($id > 0)
 			$field->value = 'Update Watch';
-		} else {
+		else
 			$field->value = 'Add New Watch';
-		}
-
 		$form->add($field);
 
 		return $form->render();
@@ -268,7 +268,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$r = $this->input->post->roles;
 
 
-		if ($f == '' || $b == '' || $a == '' || $r == '') {
+		if($f == '' || $b == '' || $a == '' || $r == '') {
 			$this->error("No watch created, please check your values.");
 			$this->session->redirect("../"); // back to list
 		}
@@ -312,7 +312,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$a = $this->db->escape_string($a);
 		$r = $this->db->escape_string($r);
 
-		if ($id == 0) {
+		if($id == 0) {
 			$sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r' ON DUPLICATE KEY UPDATE id = id;";
 		} else {
 			$sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r' WHERE id = $id";
