@@ -24,6 +24,7 @@ class ProcessFieldChangeNotifier extends Process {
 			'permanent' => false,
 			'autoload'  => true,
 			'singular'  => true,
+			'author'    => 'Netcarver',
 			'requires'  => 'TextformatterTagParser',
 		);
 	}
@@ -137,10 +138,9 @@ class ProcessFieldChangeNotifier extends Process {
 
 			$parser->set('context', $context)->format($body)->format($subject);
 			
-//wire()->session->message( var_export($subject, true) );
-//wire()->session->message( var_export($body, true) );
 			$sent = $this->sendEmail( $bcc, $page, $fname, $old, $new );
-//wire()->session->message( "Recipient: " . var_export($to, true) . (($sent) ? " (SUCCESS!)" : " (FAILURE!)") );
+			if(!$sent)
+				wire()->session->error("Failed sending to: $to");
 		}
 		unset($parser);
 	}
