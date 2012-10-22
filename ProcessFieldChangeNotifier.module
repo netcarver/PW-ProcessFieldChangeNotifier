@@ -9,6 +9,8 @@
  * TODO Allow users to be individually selected using AsmSelect instead of using roles?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
  * TODO Add localised strings
+ * TODO Switch to a 1-trigger -> n-actions schama
+ * TODO Make the triggerActions() method hookable => this becomes an engine for other modules/code
  **/
 class ProcessFieldChangeNotifier extends Process {
 
