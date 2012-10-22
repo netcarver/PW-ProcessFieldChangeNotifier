@@ -138,7 +138,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 			$parser->set('context', $context)->format($body)->format($subject);
 			
-			$sent = $this->sendEmail( $bcc, $page, $fname, $old, $new );
+			$sent = $this->sendEmail( $to, $subject, $body );
 			if(!$sent)
 				wire()->session->error("Failed sending to: $to");
 		}
@@ -146,20 +146,14 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	protected function sendEmail( $to, $page, $fname, $old, $new ) 
+	protected function sendEmail( $to, $subject, $body ) 
 	{
 		$headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
 		$headers[] = "MIME-Version: 1.0";
 		$headers[] = "Content-type: text/plain; charset=UTF-8";
 		$headers[] = "Reply-To: blackhole@".$this->config->httpHost;
 
-		$subject = __(" Change detected in field : ", __FILE__) . $fname;
-		$body[]  = "Field $fname was changed...";
-		$body[]  = "\tFrom:    " . $old;
-		$body[]  = "\tTo:      " . $new;
-		$body[]  = "\tOn Page: " . $page->name;
-
-		$sent = mail($to, $subject, join("\n",$body), join("\r\n",$headers));
+		$sent = mail($to, $subject, $body, join("\r\n",$headers));
 		return $sent;
 	}
 
