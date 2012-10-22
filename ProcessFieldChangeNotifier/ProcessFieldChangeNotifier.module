@@ -373,7 +373,7 @@ class ProcessFieldChangeNotifier extends Process {
 		parent::___install();
 
 		$sql = <<< _SQL
-		CREATE TABLE IF NOT EXISTS {$this->className} (
+		CREATE TABLE {$this->className} (
 			`id` int unsigned NOT NULL auto_increment,
 			`field`   varchar(255)  NOT NULL DEFAULT '',
 			`before`  varchar(255)  NOT NULL DEFAULT '',
