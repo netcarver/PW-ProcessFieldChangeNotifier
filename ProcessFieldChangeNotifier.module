@@ -171,29 +171,33 @@ class ProcessFieldChangeNotifier extends Process {
 		$table->setEncodeEntities(false);
 		$table->headerRow(array('When this field&#8230;', 'changes from this value&#8230;', 'to this value&#8230;', 'notify users with role(s)&#8230;', 'Delete'));
 
-		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
-
+		$n = 0;
 		while($row = $result->fetch_assoc()) {
 
-			 // output in table rows with edit link and delete checkbox
-			 $table->row(array(
-				 wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
-				 $row['before'],
-				 $row['after'],
-				 self::expandPageNames($row['roles'], ', '),
-				 "<input type='checkbox' name='delete[]' value='$row[id]' />"
-				 ));
+			$n++;
+			// output in table rows with edit link and delete checkbox
+			$table->row(array(
+				wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
+				$row['before'],
+				$row['after'],
+				self::expandPageNames($row['roles'], ', '),
+				"<input type='checkbox' name='delete[]' value='$row[id]' />"
+				));
 		}
 
-		$button = $this->modules->get("InputfieldButton");
-		$button->type  = 'submit';
-		$button->id    = 'submit_delete';
-		$button->value = 'Remove selected watches';
-		$button->class = $button->class . " align_right";
+		if($n) {
+			$button = $this->modules->get("InputfieldButton");
+			$button->type  = 'submit';
+			$button->id    = 'submit_delete';
+			$button->value = 'Remove selected watches';
+			$button->class = $button->class . " align_right";
+		}
+		else
+			$table->row( array('Add a watch to get started','','','','') );
 
 		$table->action(array('Add watch' => 'edit/?id=0'));
 
-		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . $button->render() . "</div></form>";
+		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . (($button) ? $button->render() : '') . "</div></form>";
 	}
 
 
@@ -269,23 +273,23 @@ class ProcessFieldChangeNotifier extends Process {
 		$field = $m->get("InputfieldAsmSelect");
 		$field->label = 'Select the role(s) of the users you wish to have notified when this watch triggers';
 		$field->attr('id+name', 'roles');
-		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name); 
+		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
 		$field->attr('value', explode(",", $r) );
 		$form->add($field);
 
-		$field = $m->get("InputfieldText"); 
+		$field = $m->get("InputfieldText");
 		$field->attr('name', 'subject');
 		$field->attr('value', $subject);
 		$field->collapsed = Inputfield::collapsedYes;
 		$field->label = __("Subject for notification email", __FILE__);
-		$form->add($field); 
+		$form->add($field);
 
-		$field = $m->get("InputfieldTextarea"); 
-		$field->attr('name', 'body'); 
+		$field = $m->get("InputfieldTextarea");
+		$field->attr('name', 'body');
 		$field->attr('value', $body);
 		$field->collapsed = Inputfield::collapsedYes;
 		$field->label = __("Body for notification email", __FILE__);
-		//$field->description = __("You may include any user fields in the email by entering the field like this: {name}. ", __FILE__); 
+		//$field->description = __("You may include any user fields in the email by entering the field like this: {name}. ", __FILE__);
 		$form->add($field);
 
 
@@ -294,9 +298,9 @@ class ProcessFieldChangeNotifier extends Process {
 		else
 			$text = 'Add New Watch';
 		$field = $m->get('InputfieldSubmit');
-		$field->attr('class', $field->class . ' head_button_clone'); 
-		$field->value = $text; 
-		$form->add($field); 
+		$field->attr('class', $field->class . ' head_button_clone');
+		$field->value = $text;
+		$form->add($field);
 
 		return $form->render();
 	}
