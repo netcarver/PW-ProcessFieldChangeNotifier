@@ -17,8 +17,7 @@ class ProcessFieldChangeNotifier extends Process {
 	protected $watches_index = array();
 
 
-	public static function getModuleInfo()
-	{
+	public static function getModuleInfo() {
 		return array(
 			'title'     => 'Field Change Notifier',
 			'summary'   => 'Notify users of changes to fields',
@@ -32,8 +31,7 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	public function init()
-	{
+	public function init() {
 		parent::init();
 
 		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
@@ -44,8 +42,8 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	public function hookPagesSaveReady(HookEvent $event)
-	{
+	public function hookPagesSaveReady(HookEvent $event) {
+
 		$page    = $event->arguments[0];
 		$changes = $page->getChanges();
 
@@ -92,8 +90,7 @@ class ProcessFieldChangeNotifier extends Process {
 	/**
 	 * Expands an array or list of page ids into a string of page names.
 	 **/
-	protected static function expandPageNames($pages, $glue=", ")
-	{
+	protected static function expandPageNames($pages, $glue=", ") {
 		$o = array();
 
 		if(!is_array($pages))
@@ -148,8 +145,7 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	protected function sendEmail( $to, $subject, $body ) 
-	{
+	protected function sendEmail( $to, $subject, $body ) {
 		$headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
 		$headers[] = "MIME-Version: 1.0";
 		$headers[] = "Content-type: text/plain; charset=UTF-8";
@@ -189,18 +185,18 @@ class ProcessFieldChangeNotifier extends Process {
 		$button->type  = 'submit';
 		$button->id    = 'submit_delete';
 		$button->value = 'Remove selected watches';
+		$button->class = $button->class . " align_right";
 
 		$table->action(array('Add watch' => 'edit/?id=0'));
 
-		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'>" .$table->render() . $button->render() . "</form>";
+		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . $button->render() . "</div></form>";
 	}
 
 
 	/**
 	 * Edit/Add Redirect - Called when the URL is: ./edit/
 	 */
-	public function ___executeEdit()
-	{
+	public function ___executeEdit() {
 
 		$this->fuel->breadcrumbs->add(new Breadcrumb('../', 'Field Change Notifier'));
 
@@ -305,8 +301,7 @@ class ProcessFieldChangeNotifier extends Process {
 	/**
 	 * Save Redirect - Called when the URL is ./save/
 	 */
-	public function ___executeSave()
-	{
+	public function ___executeSave() {
 
 		$id = (int) $this->input->post->id;
 		$f = $this->input->post->field;
@@ -332,8 +327,7 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	public function ___executeDelete()
-	{
+	public function ___executeDelete() {
 		$count = 0;
 
 		if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
@@ -372,8 +366,8 @@ class ProcessFieldChangeNotifier extends Process {
 
 
 
-	public function ___install()
-	{
+	public function ___install() {
+
 		parent::___install();
 
 		$sql = <<< _SQL
@@ -399,6 +393,7 @@ _SQL;
 		$p->save();
 
 	}
+
 
 	public function ___uninstall() {
 		$p = $this->pages->get('template=admin, name=' . __CLASS__);
