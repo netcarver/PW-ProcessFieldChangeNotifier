@@ -76,10 +76,6 @@ class ProcessFieldChangeNotifier extends Process {
 				if('*' == $watch_old || $watch_old == $old) {
 					$roles = self::expandPageNames($d['roles'], '|');
 					$this->triggerMatch( $page, $change, $watch_old, $old, $new, $d );
-
-					$old   = htmlspecialchars($old);
-					$new   = htmlspecialchars($new);
-					$this->message("Triggered watch on '$change' going from [$old] => [$new]. Notifications sent to roles [$roles]");
 				}
 			}
 		}
@@ -105,16 +101,21 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data )
-	{
-		$roles   = $data['roles'];
+	protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data ) {
+
+		$roles   = str_replace(',', '|', $data['roles']);
+		$sel = "roles=$roles, include=all";
+		
+//wire()->session->message("Selector: [$sel]");
 
 		// Any users with the matching role(s)?
-		$users = wire()->users->find("roles=$roles, include=all" );
+		$users = wire()->users->find($sel);
 		if(empty($users)) return;
 		
 		$parser = $this->modules->get("TextformatterTagParser");
 		foreach($users as $user) {
+
+//wire()->session->message("Sending email to " . $user->name);
 
 			if(!$user->email) continue;
 
@@ -157,12 +158,15 @@ class ProcessFieldChangeNotifier extends Process {
 
 
 
-	public function ___execute()
-	{
+	public function ___execute() {
+
 		$this->setFuel('processHeadline', 'Field Change Notifier');
 
 		$description = "<p class='description'>NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.<br />Use a single * in either value column as a wildcard.</p>";
 
+		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
+
+		// generate the table of watches...
 		$table = $this->modules->get("MarkupAdminDataTable");
 		$table->setEncodeEntities(false);
 		$table->headerRow(array('When this field&#8230;', 'changes from this value&#8230;', 'to this value&#8230;', 'notify users with role(s)&#8230;', 'Delete'));
@@ -176,7 +180,7 @@ class ProcessFieldChangeNotifier extends Process {
 				 wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
 				 $row['before'],
 				 $row['after'],
-				 self::expandPageNames($row['roles'], ' or '),
+				 self::expandPageNames($row['roles'], ', '),
 				 "<input type='checkbox' name='delete[]' value='$row[id]' />"
 				 ));
 		}
@@ -262,37 +266,37 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->value = $a;
 		$form->add($field);
 
-		$field = $m->get("InputfieldPageListSelect");
+		$field = $m->get("InputfieldAsmSelect");
 		$field->label = 'Select the role(s) of the users you wish to have notified when this watch triggers';
 		$field->attr('id+name', 'roles');
-		$field->showRootPage = false;
-		$field->showPath = false;
-		$field->startLabel = "Select role";
-		$field->parent_id = wire()->config->rolesPageID; // tell it to start from the roles 'root' page
-		$field->value = $r;
+		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name); 
+		$field->attr('value', explode(",", $r) );
 		$form->add($field);
 
 		$field = $m->get("InputfieldText"); 
-		$field->attr('name', 'subject'); 
-		$field->attr('value', $subject); 
+		$field->attr('name', 'subject');
+		$field->attr('value', $subject);
+		$field->collapsed = Inputfield::collapsedYes;
 		$field->label = __("Subject for notification email", __FILE__);
 		$form->add($field); 
 
 		$field = $m->get("InputfieldTextarea"); 
 		$field->attr('name', 'body'); 
 		$field->attr('value', $body);
+		$field->collapsed = Inputfield::collapsedYes;
 		$field->label = __("Body for notification email", __FILE__);
 		//$field->description = __("You may include any user fields in the email by entering the field like this: {name}. ", __FILE__); 
 		$form->add($field);
 
 
-		$field = $m->get("InputfieldButton");
-		$field->type = 'submit';
 		if($id > 0)
-			$field->value = 'Update Watch';
+			$text = 'Update Watch';
 		else
-			$field->value = 'Add New Watch';
-		$form->add($field);
+			$text = 'Add New Watch';
+		$field = $m->get('InputfieldSubmit');
+		$field->attr('class', $field->class . ' head_button_clone'); 
+		$field->value = $text; 
+		$form->add($field); 
 
 		return $form->render();
 	}
@@ -319,7 +323,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$this->saveWatch($f, $b, $a, $r, $subject, $body, $id);
 
-		$r = self::expandPageNames($r);
+		$r = self::expandPageNames($r,' or ');
 		$fname = wire()->fields->get($f)->name;
 		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify users with role $r.");
 		$this->session->redirect("../"); // back to list
@@ -347,12 +351,12 @@ class ProcessFieldChangeNotifier extends Process {
 
 
 
-	private function saveWatch($f, $b, $a, $r, $subject, $body, $id = 0)
-	{
+	private function saveWatch($f, $b, $a, $r, $subject, $body, $id = 0) {
+
 		$f = $this->db->escape_string($f);
 		$b = $this->db->escape_string($b);
 		$a = $this->db->escape_string($a);
-		$r = $this->db->escape_string($r);
+		$r = $this->db->escape_string(implode(',',$r));
 		$subject = $this->db->escape_string($subject);
 		$body    = $this->db->escape_string($body);
 
