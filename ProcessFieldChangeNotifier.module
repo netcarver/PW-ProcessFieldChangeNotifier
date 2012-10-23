@@ -359,6 +359,8 @@ class ProcessFieldChangeNotifier extends Process {
 		$b = $this->db->escape_string($b);
 		$a = $this->db->escape_string($a);
 		$r = $this->db->escape_string($r);
+		$subject = $this->db->escape_string($subject);
+		$body    = $this->db->escape_string($body);
 
 		if($id == 0)
 			$sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
