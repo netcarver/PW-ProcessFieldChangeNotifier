@@ -219,9 +219,9 @@ class ProcessFieldChangeNotifier extends Process {
 			// Add new watch
 			$id = 0;
 			$f = '';
-			$b = '';
-			$a = '';
-			$r = '';
+			$b = '*';
+			$a = '*';
+			$r = wire()->roles->get('superuser')->id;
 			$subject = '{user.name>title} we spotted a change.';
 			$body    = 'Hello {user.name>title}, we just noticed that {meta.name} changed from {meta.old>strip} to {meta.new>strip}';
 			$this->setFuel('processHeadline', "Add Watch");
