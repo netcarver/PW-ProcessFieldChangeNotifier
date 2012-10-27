@@ -270,6 +270,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->description = 'Enter a value like "Hello". Use "*" to mean "Any value"';
 		$field->name = 'before';
 		$field->id = 'before';
+		$field->columnWidth = 50;
 		$field->value = $b;
 		$form->add($field);
 
@@ -278,6 +279,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->description = 'Enter a value like "Hello". Use "*" to mean "Any value"';
 		$field->name = 'after';
 		$field->id = 'after';
+		$field->columnWidth = 50;
 		$field->value = $a;
 		$form->add($field);
 
