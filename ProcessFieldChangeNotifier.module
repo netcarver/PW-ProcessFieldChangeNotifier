@@ -3,9 +3,8 @@
 /**
  * TODO Fix detection of * => zero values
  * TODO Add detection of * => empty and empty => * values
- * TODO Add SMTP support module?
  * TODO Add support for empty strings in before/after condition
- * TODO Change from & to inputfields to reflect the type of the watched field.
+ * TODO Change from & to inputfields to reflect the type of the watched field?
  * TODO Allow users to be individually selected using AsmSelect instead of using roles?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
  * TODO Add localised strings
@@ -16,12 +15,14 @@ class ProcessFieldChangeNotifier extends Process {
 
 	protected $watches_index = array();
 
+	protected $debug = false;
+
 
 	public static function getModuleInfo() {
 		return array(
 			'title'     => 'Field Change Notifier',
 			'summary'   => 'Notify users of changes to fields',
-			'version'   => 20,
+			'version'   => 21,
 			'permanent' => false,
 			'autoload'  => true,
 			'singular'  => true,
@@ -97,8 +98,10 @@ class ProcessFieldChangeNotifier extends Process {
 		}
 
 		asort($o);
-		return implode($glue, $o);
+		/* return implode($glue, $o); */
+		return self::joinList($o);
 	}
+
 
 
 	protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data ) {
@@ -111,15 +114,17 @@ class ProcessFieldChangeNotifier extends Process {
 		// Any users with the matching role(s)?
 		$users = wire()->users->find($sel);
 		if(empty($users)) return;
-		
+
+		$sent_to = array();		// As multiple roles could contain the same user track who we email to prevent multiple sends
+
 		$parser = $this->modules->get("TextformatterTagParser");
 		foreach($users as $user) {
 
-//wire()->session->message("Sending email to " . $user->name);
+			$to = $user->email;
 
-			if(!$user->email) continue;
+			if(!$to) continue;
+			if(array_key_exists($to, $sent_to)) continue; // don't send to same address twice
 
-			$to      = $user->email;
 			$subject = $data['subject'];
 			$body    = $data['body'];
 
@@ -136,12 +141,18 @@ class ProcessFieldChangeNotifier extends Process {
 			$context['field'] = $field;
 			$context['meta']  = $meta;
 
-			$parser->set('context', $context)->format($body)->format($subject);
+			$parser->set('context', $context)->format($body)->set('email', true)->format($subject);
 			
 			$sent = $this->sendEmail( $to, $subject, $body );
-			if(!$sent)
-				wire()->session->error("Failed sending to: $to");
+			if($sent)
+				$sent_to[$to] = $user->name;
 		}
+
+		if($this->debug && !empty($sent_to)) {
+			$sent_to = self::joinList($sent_to, ', ', ' and ');
+			wire()->session->message("Sent email to: " . $sent_to );
+		}
+
 		unset($parser);
 	}
 
@@ -327,7 +338,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$this->saveWatch($f, $b, $a, $r, $subject, $body, $id);
 
-		$r = self::expandPageNames($r,' or ');
+		$r = self::expandPageNames($r, ' or ');
 		$fname = wire()->fields->get($f)->name;
 		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify users with role $r.");
 		$this->session->redirect("../"); // back to list
@@ -370,6 +381,37 @@ class ProcessFieldChangeNotifier extends Process {
 			$sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r', `subject` = '$subject', `body` = '$body' WHERE id = $id";
 
 		return $this->db->query($sql);
+	}
+
+
+	/* static public function dmp() */
+	/* { */
+	/* 	static $bool = array( 0=>'false', 1=>'true' ); */
+	/* 	foreach (func_get_args() as $a) */
+	/* 		echo '<pre>',(is_array($a)) ? htmlspecialchars(print_r($a)) : ((is_bool($a)) ? $bool[(int)$a] : htmlspecialchars((string)$a)), "</pre>\n"; */
+	/* } */
+
+
+	/**
+	 * Joins a list of strings with the given glue -- but uses a different glue for the last join.
+	 *
+	 * Can be used in languages such as English to produce a grammatically correct string from an 
+	 * array of input strings.
+	 */
+	static public function joinList( $arr, $glue1=', ', $last_glue=' or ' )
+	{
+		if( !is_array($arr) )
+			return '';
+
+		$last = array_pop($arr);
+		$txt = implode( $glue1, $arr );
+		$arr[] = $last;
+		if( !empty($txt) )
+			$txt .= $last_glue.$last;
+		else
+			$txt = $last;
+
+		return $txt;
 	}
 
 
