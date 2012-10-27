@@ -98,7 +98,6 @@ class ProcessFieldChangeNotifier extends Process {
 		}
 
 		asort($o);
-		/* return implode($glue, $o); */
 		return self::joinList($o);
 	}
 
@@ -115,7 +114,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$users = wire()->users->find($sel);
 		if(empty($users)) return;
 
-		$sent_to = array();		// As multiple roles could contain the same user track who we email to prevent multiple sends
+		$sent_to = array();
 
 		$parser = $this->modules->get("TextformatterTagParser");
 		foreach($users as $user) {
@@ -123,7 +122,7 @@ class ProcessFieldChangeNotifier extends Process {
 			$to = $user->email;
 
 			if(!$to) continue;
-			if(array_key_exists($to, $sent_to)) continue; // don't send to same address twice
+			if(array_key_exists($to, $sent_to)) continue; // don't send to same address twice - but I think PW eliminates duplicates anyway
 
 			$subject = $data['subject'];
 			$body    = $data['body'];
@@ -142,7 +141,7 @@ class ProcessFieldChangeNotifier extends Process {
 			$context['meta']  = $meta;
 
 			$parser->set('context', $context)->format($body)->set('email', true)->format($subject);
-			
+
 			$sent = $this->sendEmail( $to, $subject, $body );
 			if($sent)
 				$sent_to[$to] = $user->name;
