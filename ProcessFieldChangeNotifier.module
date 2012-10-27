@@ -35,9 +35,9 @@ class ProcessFieldChangeNotifier extends Process {
 	public function init() {
 		parent::init();
 
-		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
+		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
 		while($row = $result->fetch_assoc())
-			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles' => $row['roles'], 'subject' => $row['subject'], 'body' => $row['body']);
+			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
 
 		wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
 	}
@@ -75,7 +75,6 @@ class ProcessFieldChangeNotifier extends Process {
 			foreach( $watches as $watch_old => $d ) {
 				// trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
 				if('*' == $watch_old || $watch_old == $old) {
-					$roles = self::expandPageNames($d['roles']);
 					$this->triggerMatch( $page, $change, $watch_old, $old, $new, $d );
 				}
 			}
@@ -84,10 +83,20 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
+	protected static function expandRoleAndUserNames($roles, $ids, $glue=" and ") {
+		$r = self::expandPageNames($roles, ' or ');
+		$u = self::expandPageNames($ids,   ' and ');
+
+		if($r) $o[] = "with role(s) $r";
+		if($u) $o[] = $u;
+		return implode($o, $glue);
+	}
+
+
 	/**
 	 * Expands an array or list of page ids into a string of page names.
 	 **/
-	protected static function expandPageNames($pages) {
+	protected static function expandPageNames($pages, $glue=" or ") {
 		$o = array();
 
 		if(!is_array($pages))
@@ -98,63 +107,104 @@ class ProcessFieldChangeNotifier extends Process {
 		}
 
 		asort($o);
-		return self::joinList($o);
+		return self::joinList($o, ', ', $glue);
+	}
+
+	/**
+	 * Joins a list of strings with the given glue -- but uses a different glue for the last join.
+	 *
+	 * Can be used in languages such as English to produce a grammatically correct string from an 
+	 * array of input strings.
+	 */
+	static public function joinList( $arr, $glue1=', ', $last_glue=' or ' )
+	{
+		if( !is_array($arr) )
+			return '';
+
+		$last = array_pop($arr);
+		$txt = implode( $glue1, $arr );
+		$arr[] = $last;
+		if( !empty($txt) )
+			$txt .= $last_glue.$last;
+		else
+			$txt = $last;
+
+		return $txt;
 	}
 
 
 
 	protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data ) {
 
-		$roles = $data['roles'];
-		//$roles = str_replace(',', '|', $roles);
-		$sel   = "roles=$roles, include=all";
+		$rsel = $usel = 'id=0';
+
+		list($roles, $users) = explode("\n", $data['roles_users']);
+		if($roles) $rsel = "roles=$roles, include=all";
+		if($users) $usel = "id=$users, include=all";
 
 		if($this->debug)
-			wire()->session->message("Selector: [$sel]");
+			wire()->session->message("Roles selector: [$rsel], Users selector: [$usel]");
 
-		// Any users with the matching role(s)?
-		$users = wire()->users->find($sel);
-		if(empty($users)) return;
+		$users_by_role = wire()->users->find($rsel);
+		$users_by_id   = wire()->users->find($usel);
+
+		// Any users with the matching role(s) or id(s)?
+		if(empty($users_by_role) && empty($users_by_id)) return;
 
 		$sent_to = array();
+		$context = array();
+
+		$meta = new WireData();
+		$meta
+			->set('name', $fname)
+			->set('old', $old)
+			->set('new', $new)
+			;
+		$field = wire()->fields->get($fname);
+
+		$context['field'] = $field;
+		$context['meta']  = $meta;
 
 		$parser = $this->modules->get("TextformatterTagParser");
-		foreach($users as $user) {
-
-			$to = $user->email;
-
-			if(!$to) continue;
-			if(array_key_exists($to, $sent_to)) continue; // don't send to same address twice - but I think PW eliminates duplicates anyway
-
-			$subject = $data['subject'];
-			$body    = $data['body'];
-
-			$meta = new WireData();
-			$meta
-				->set('name', $fname)
-				->set('old', $old)
-				->set('new', $new)
-				;
-			$field = wire()->fields->get($fname);
-
-			$context = array();
-			$context['user']  = $user;
-			$context['field'] = $field;
-			$context['meta']  = $meta;
-
-			$parser->set('context', $context)->format($body)->set('email', true)->format($subject);
-
-			$sent = $this->sendEmail( $to, $subject, $body );
-			if($sent)
-				$sent_to[$to] = $user->name;
+		if($users_by_role->count()) {
+			foreach($users_by_role as $user)
+				$this->action($user, $parser, $sent_to, $data, $context);
 		}
+		if($users_by_id->count()) {
+			foreach($users_by_id as $user)
+				$this->action($user, $parser, $sent_to, $data, $context);
+		}
+		unset($parser);
 
 		if($this->debug && !empty($sent_to)) {
 			$sent_to = self::joinList($sent_to, ', ', ' and ');
 			wire()->session->message("Sent email to: " . $sent_to );
 		}
 
-		unset($parser);
+	}
+
+	
+	protected function action($user, TextformatterTagParser &$parser, &$sent_to, $data, &$context) {
+
+		$to = $user->email;
+
+		if(!$to) return;
+		if(array_key_exists($to, $sent_to)) return; // don't send to same address twice - but I think PW eliminates duplicates anyway
+
+		$subject = $data['subject'];
+		$body    = $data['body'];
+
+		$context['user']  = $user;
+
+		$parser
+			->set('context', $context)
+			->set('email', false) ->format($body)
+			->set('email', true)  ->format($subject)
+			;
+
+		$sent = $this->sendEmail( $to, $subject, $body );
+		if($sent)
+			$sent_to[$to] = $user->name;
 	}
 
 
@@ -181,18 +231,21 @@ class ProcessFieldChangeNotifier extends Process {
 		// generate the table of watches...
 		$table = $this->modules->get("MarkupAdminDataTable");
 		$table->setEncodeEntities(false);
-		$table->headerRow(array('When this field&#8230;', 'changes from this value&#8230;', 'to this value&#8230;', 'notify users with role(s)&#8230;', 'Delete'));
+		$table->headerRow(array('When this field&#8230;', 'changes from this value&#8230;', 'to this value&#8230;', 'notify user(s) &#8230;', 'Delete'));
 
 		$n = 0;
 		while($row = $result->fetch_assoc()) {
 
 			$n++;
+
+			list($r, $u) = explode("\n", $row['roles_users']);
+
 			// output in table rows with edit link and delete checkbox
 			$table->row(array(
 				wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
 				$row['before'],
 				$row['after'],
-				self::expandPageNames($row['roles'], ', '),
+				self::expandRoleAndUserNames($r, $u, " and&#8230;<br />"),
 				"<input type='checkbox' name='delete[]' value='$row[id]' />"
 				));
 		}
@@ -223,11 +276,11 @@ class ProcessFieldChangeNotifier extends Process {
 		$id = (int) $this->input->get->id;
 		$m  = $this->modules;
 
-
 		if($id > 0) {
 			// Edit existing watch
-			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
-			list($id, $f, $b, $a, $r, $subject, $body) = $result->fetch_array();
+			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
+			list($id, $f, $b, $a, $ru, $subject, $body) = $result->fetch_array();
+			list($r, $u) = explode("\n", $ru);
 			$fname = wire()->fields->get($f)->name;
 			$this->setFuel('processHeadline', "Edit Watch on \"$fname\"");
 
@@ -237,7 +290,8 @@ class ProcessFieldChangeNotifier extends Process {
 			$f = '';
 			$b = '*';
 			$a = '*';
-			$r = wire()->roles->get('superuser')->id;
+			$r = '';
+			$u = '';
 			$subject = '{user.name>title} we spotted a change.';
 			$body    = 'Hello {user.name>title}, we just noticed that {meta.name} changed from {meta.old>strip} to {meta.new>strip}';
 			$this->setFuel('processHeadline', "Add Watch");
@@ -284,12 +338,24 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->value = $a;
 		$form->add($field);
 
+		$fs = $m->get("InputfieldFieldset");
+		$fs->label = 'Select users and groups of users to be notified when this watch triggers';
 		$field = $m->get("InputfieldAsmSelect");
-		$field->label = 'Select the role(s) of the users you wish to have notified when this watch triggers';
+		$field->label = 'Select the role(s) of the users you wish to have notified';
 		$field->attr('id+name', 'roles');
+		$field->columnWidth = 50;
 		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
 		$field->attr('value', explode("|", $r) );
-		$form->add($field);
+		$fs->add($field);
+
+		$field = $m->get("InputfieldAsmSelect");
+		$field->label = 'Select individual users you wish to have notified';
+		$field->attr('id+name', 'users');
+		$field->columnWidth = 50;
+		foreach(wire('users') as $user) $field->addOption($user->id, $user->name);
+		$field->attr('value', explode("|", $u) );
+		$fs->add($field);
+		$form->add($fs);
 
 		$field = $m->get("InputfieldText");
 		$field->attr('name', 'subject');
@@ -330,20 +396,22 @@ class ProcessFieldChangeNotifier extends Process {
 		$b = $this->input->post->before;
 		$a = $this->input->post->after;
 		$r = $this->input->post->roles;
+		$u = $this->input->post->users;
 		$subject = $this->input->post->subject;
 		$body    = $this->input->post->body;
 
 
-		if($f == '' || $b == '' || $a == '' || $r == '') {
+		if($f == '' || $b == '' || $a == '' || ($r == '' && $u == '')) {
 			$this->error("No watch created, please check your values.");
 			$this->session->redirect("../"); // back to list
 		}
 
-		$this->saveWatch($f, $b, $a, $r, $subject, $body, $id);
+		$this->saveWatch($f, $b, $a, $r, $u, $subject, $body, $id);
 
-		$r = self::expandPageNames($r, ' or ');
+		$ru = self::expandRoleAndUserNames($r, $u);
+
 		$fname = wire()->fields->get($f)->name;
-		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify users with role $r.");
+		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify user(s) $ru");
 		$this->session->redirect("../"); // back to list
 
 	}
@@ -369,54 +437,24 @@ class ProcessFieldChangeNotifier extends Process {
 
 
 
-	private function saveWatch($f, $b, $a, $r, $subject, $body, $id = 0) {
+	private function saveWatch($f, $b, $a, $r, $u, $subject, $body, $id = 0) {
 
 		$f = $this->db->escape_string($f);
 		$b = $this->db->escape_string($b);
 		$a = $this->db->escape_string($a);
-		$r = $this->db->escape_string(implode('|', $r));
+		$r = implode('|', $r);
+		$u = implode('|', $u);
+		$ru = $this->db->escape_string($r . "\n" . $u);
 		$subject = $this->db->escape_string($subject);
 		$body    = $this->db->escape_string($body);
 
 		if($id == 0)
-			$sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
+			$sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
 		else
-			$sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles` = '$r', `subject` = '$subject', `body` = '$body' WHERE id = $id";
+			$sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' WHERE id = $id";
 
 		return $this->db->query($sql);
 	}
-
-
-	/* static public function dmp() */
-	/* { */
-	/* 	static $bool = array( 0=>'false', 1=>'true' ); */
-	/* 	foreach (func_get_args() as $a) */
-	/* 		echo '<pre>',(is_array($a)) ? htmlspecialchars(print_r($a)) : ((is_bool($a)) ? $bool[(int)$a] : htmlspecialchars((string)$a)), "</pre>\n"; */
-	/* } */
-
-
-	/**
-	 * Joins a list of strings with the given glue -- but uses a different glue for the last join.
-	 *
-	 * Can be used in languages such as English to produce a grammatically correct string from an 
-	 * array of input strings.
-	 */
-	static public function joinList( $arr, $glue1=', ', $last_glue=' or ' )
-	{
-		if( !is_array($arr) )
-			return '';
-
-		$last = array_pop($arr);
-		$txt = implode( $glue1, $arr );
-		$arr[] = $last;
-		if( !empty($txt) )
-			$txt .= $last_glue.$last;
-		else
-			$txt = $last;
-
-		return $txt;
-	}
-
 
 
 	public function ___install() {
@@ -425,13 +463,13 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$sql = <<< _SQL
 		CREATE TABLE {$this->className} (
-			`id` int unsigned NOT NULL auto_increment,
-			`field`   varchar(255)  NOT NULL DEFAULT '',
-			`before`  varchar(255)  NOT NULL DEFAULT '',
-			`after`   varchar(255)  NOT NULL DEFAULT '',
-			`roles`   varchar(255)  NOT NULL DEFAULT '',
-			`subject` varchar(255)  NOT NULL DEFAULT 'Subject',
-			`body`    varchar(2048) NOT NULL DEFAULT 'Body',
+			`id`          int unsigned NOT NULL auto_increment,
+			`field`       varchar(255)  NOT NULL DEFAULT '',
+			`before`      varchar(255)  NOT NULL DEFAULT '',
+			`after`       varchar(255)  NOT NULL DEFAULT '',
+			`roles_users` varchar(255)  NOT NULL DEFAULT '',
+			`subject`     varchar(255)  NOT NULL DEFAULT 'Subject',
+			`body`        varchar(2048) NOT NULL DEFAULT 'Body',
 			PRIMARY KEY(`id`)
 		) ENGINE = INNODB;
 _SQL;
