@@ -75,7 +75,7 @@ class ProcessFieldChangeNotifier extends Process {
 			foreach( $watches as $watch_old => $d ) {
 				// trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
 				if('*' == $watch_old || $watch_old == $old) {
-					$roles = self::expandPageNames($d['roles'], '|');
+					$roles = self::expandPageNames($d['roles']);
 					$this->triggerMatch( $page, $change, $watch_old, $old, $new, $d );
 				}
 			}
@@ -87,11 +87,11 @@ class ProcessFieldChangeNotifier extends Process {
 	/**
 	 * Expands an array or list of page ids into a string of page names.
 	 **/
-	protected static function expandPageNames($pages, $glue=", ") {
+	protected static function expandPageNames($pages) {
 		$o = array();
 
 		if(!is_array($pages))
-			$pages = explode(',', $pages);
+			$pages = explode('|', $pages);
 		while(!empty($pages)) {
 			$pid = trim(array_pop($pages));
 			$o[] = wire()->pages->get("id=".$pid)->name;
@@ -105,10 +105,12 @@ class ProcessFieldChangeNotifier extends Process {
 
 	protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data ) {
 
-		$roles   = str_replace(',', '|', $data['roles']);
-		$sel = "roles=$roles, include=all";
-		
-//wire()->session->message("Selector: [$sel]");
+		$roles = $data['roles'];
+		//$roles = str_replace(',', '|', $roles);
+		$sel   = "roles=$roles, include=all";
+
+		if($this->debug)
+			wire()->session->message("Selector: [$sel]");
 
 		// Any users with the matching role(s)?
 		$users = wire()->users->find($sel);
@@ -286,7 +288,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->label = 'Select the role(s) of the users you wish to have notified when this watch triggers';
 		$field->attr('id+name', 'roles');
 		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
-		$field->attr('value', explode(",", $r) );
+		$field->attr('value', explode("|", $r) );
 		$form->add($field);
 
 		$field = $m->get("InputfieldText");
@@ -372,7 +374,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$f = $this->db->escape_string($f);
 		$b = $this->db->escape_string($b);
 		$a = $this->db->escape_string($a);
-		$r = $this->db->escape_string(implode(',',$r));
+		$r = $this->db->escape_string(implode('|', $r));
 		$subject = $this->db->escape_string($subject);
 		$body    = $this->db->escape_string($body);
 
