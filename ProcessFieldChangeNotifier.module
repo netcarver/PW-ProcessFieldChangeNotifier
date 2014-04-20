@@ -163,6 +163,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$context['field'] = $field;
 		$context['meta']  = $meta;
+        $context['page']  = $page;
 
 		$parser = $this->modules->get("TextformatterTagParser");
 		if($users_by_role->count()) {
