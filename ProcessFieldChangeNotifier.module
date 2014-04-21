@@ -262,7 +262,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$table->action(array('Add watch' => 'edit/?id=0'));
 
-		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . (($button) ? $button->render() : '') . "</div></form>";
+		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . (isset($button) ? $button->render() : '') . "</div></form>";
 	}
 
 
