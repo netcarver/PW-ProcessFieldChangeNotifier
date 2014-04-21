@@ -39,6 +39,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 	public function hookPagesSaveReady(HookEvent $event) {
 
+        $this->watches_index = array();
 		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
 		while($row = $result->fetch_assoc()) {
 			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
@@ -56,7 +57,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 			$new     = wire()->input->post->$change;           // read the new value for the field
 			//if(!isset($new)) $new = 0;                         // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
-			$watches = $this->watches_index[ $cid ][ $new ];   // pull the watches on the field+new value combination
+			$watches = @$this->watches_index[ $cid ][ (string) $new ];   // pull the watches on the field+new value combination
 
 			if(empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
 				$watches = @$this->watches_index[ $cid ][ '*' ];
