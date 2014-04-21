@@ -33,16 +33,16 @@ class ProcessFieldChangeNotifier extends Process {
 
 	public function init() {
 		parent::init();
-
-		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
-		while($row = $result->fetch_assoc())
-			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
-
 		wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
 	}
 
 
 	public function hookPagesSaveReady(HookEvent $event) {
+
+		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
+		while($row = $result->fetch_assoc()) {
+			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
+        }
 
 		$page    = $event->arguments[0];
 		$changes = $page->getChanges();
