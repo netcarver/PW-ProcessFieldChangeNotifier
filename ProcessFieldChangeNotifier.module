@@ -20,8 +20,8 @@ class ProcessFieldChangeNotifier extends Process {
 	public static function getModuleInfo() {
 		return array(
 			'title'     => 'Field Change Notifier',
-			'summary'   => 'Notify users of changes to fields',
-			'version'   => 31,
+			'summary'   => __('Notify users of changes to fields', __FILE__),
+			'version'   => 40,
 			'permanent' => false,
 			'autoload'  => true,
 			'singular'  => true,
