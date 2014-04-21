@@ -17,6 +17,7 @@ GPL v2.
 
 h2. Versions
 
+| 0.5.0 | Make strings translatable. Fix another xdebug notice when the hook is triggered. |
 | 0.4.0 | Only query the DB on a page save (Thanks Antti.) Fix xdebug notice when no watches are defined (thanks ceberlin.) |
 | 0.3.1 | Adds the @$page@ to the context passed to the tag parser. You can now access page properties using the @{page.subfield}@ syntax. |
 | 0.3.0 | Allow individual recipient users to be selected. |
