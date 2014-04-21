@@ -15,3 +15,12 @@ h2. License
 
 GPL v2.
 
+h2. Versions
+
+| 0.3.1 | Adds the @$page@ to the context passed to the tag parser. You can now access page properties using the
+@{page.subfield}@ syntax. |
+| 0.3.0 | Allow individual recipient users to be selected. |
+| 0.2.0 | Allow multiple recipient roles to be selected and stop duplicate sends to users with more than one matching
+role. |
+| 0.1.1 | Make compatible with Soma's ModuleManager. |
+| 0.1.0 | Initial release. |
