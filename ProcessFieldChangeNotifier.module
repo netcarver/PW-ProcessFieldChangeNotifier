@@ -21,7 +21,7 @@ class ProcessFieldChangeNotifier extends Process {
 		return array(
 			'title'     => 'Field Change Notifier',
 			'summary'   => 'Notify users of changes to fields',
-			'version'   => 30,
+			'version'   => 31,
 			'permanent' => false,
 			'autoload'  => true,
 			'singular'  => true,
@@ -183,7 +183,7 @@ class ProcessFieldChangeNotifier extends Process {
 
 	}
 
-	
+
 	protected function action($user, TextformatterTagParser &$parser, &$sent_to, $data, &$context) {
 
 		$to = $user->email;
