@@ -6,7 +6,6 @@
  * TODO Add support for empty strings in before/after condition
  * TODO Change from & to inputfields to reflect the type of the watched field?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
- * TODO Add localised strings
  * TODO Switch to a 1-trigger -> n-actions schama
  * TODO Make the triggerActions() method hookable => this becomes an engine for other modules/code
  **/
@@ -83,11 +82,11 @@ class ProcessFieldChangeNotifier extends Process {
 	}
 
 
-	protected static function expandRoleAndUserNames($roles, $ids, $glue=" and ") {
-		$r = self::expandPageNames($roles, ' or ');
-		$u = self::expandPageNames($ids,   ' and ');
+	protected static function expandRoleAndUserNames($roles, $ids, $glue) {
+		$r = self::expandPageNames($roles, __(' or ', __FILE__));
+		$u = self::expandPageNames($ids,   __(' and ', __FILE__));
 
-		if($r) $o[] = "with role(s) $r";
+		if($r) $o[] = __("with role(s)", __FILE__) . " $r";
 		if($u) $o[] = $u;
 		return implode($o, $glue);
 	}
@@ -96,7 +95,7 @@ class ProcessFieldChangeNotifier extends Process {
 	/**
 	 * Expands an array or list of page ids into a string of page names.
 	 **/
-	protected static function expandPageNames($pages, $glue=" or ") {
+	protected static function expandPageNames($pages, $glue) {
 		$o = array();
 
 		if(!is_array($pages))
@@ -107,16 +106,16 @@ class ProcessFieldChangeNotifier extends Process {
 		}
 
 		asort($o);
-		return self::joinList($o, ', ', $glue);
+		return self::joinList($o, __(', ', __FILE__), $glue);
 	}
 
 	/**
 	 * Joins a list of strings with the given glue -- but uses a different glue for the last join.
 	 *
-	 * Can be used in languages such as English to produce a grammatically correct string from an 
+	 * Can be used in languages such as English to produce a grammatically correct string from an
 	 * array of input strings.
 	 */
-	static public function joinList( $arr, $glue1=', ', $last_glue=' or ' )
+	static public function joinList( $arr, $glue1, $last_glue )
 	{
 		if( !is_array($arr) )
 			return '';
@@ -143,7 +142,7 @@ class ProcessFieldChangeNotifier extends Process {
 		if($users) $usel = "id=$users, include=all";
 
 		if($this->debug)
-			wire()->session->message("Roles selector: [$rsel], Users selector: [$usel]");
+			wire()->session->message($this->_('Roles selector: ') . "[$rsel]" . $this->_(', Users selector: ') . "[$usel]");
 
 		$users_by_role = wire()->users->find($rsel);
 		$users_by_id   = wire()->users->find($usel);
@@ -178,8 +177,8 @@ class ProcessFieldChangeNotifier extends Process {
 		unset($parser);
 
 		if($this->debug && !empty($sent_to)) {
-			$sent_to = self::joinList($sent_to, ', ', ' and ');
-			wire()->session->message("Sent email to: " . $sent_to );
+			$sent_to = self::joinList($sent_to, $this->_(', '), $this->_(' and '));
+			wire()->session->message($this->_("Sent email to: ") . $sent_to );
 		}
 
 	}
@@ -225,14 +224,14 @@ class ProcessFieldChangeNotifier extends Process {
 
 		$this->setFuel('processHeadline', 'Field Change Notifier');
 
-		$description = "<p class='description'>NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.<br />Use a single * in either value column as a wildcard.</p>";
+		$description = "<p class='description'>". nl2br($this->_("NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.\nUse a single * in either value column as a wildcard.")) . "</p>";
 
 		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
 
 		// generate the table of watches...
 		$table = $this->modules->get("MarkupAdminDataTable");
 		$table->setEncodeEntities(false);
-		$table->headerRow(array('When this field&#8230;', 'changes from this value&#8230;', 'to this value&#8230;', 'notify user(s) &#8230;', 'Delete'));
+		$table->headerRow(array($this->_('When this field&#8230;'), $this->_('changes from this value&#8230;'), $this->_('to this value&#8230;'), $this->_('notify user(s) &#8230;'), $this->_('Delete')));
 
 		$n = 0;
 		while($row = $result->fetch_assoc()) {
@@ -246,7 +245,7 @@ class ProcessFieldChangeNotifier extends Process {
 				wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
 				$row['before'],
 				$row['after'],
-				self::expandRoleAndUserNames($r, $u, " and&#8230;<br />"),
+				self::expandRoleAndUserNames($r, $u, $this->_(" and ") . "&#8230;<br />"),
 				"<input type='checkbox' name='delete[]' value='$row[id]' />"
 				));
 		}
@@ -255,13 +254,13 @@ class ProcessFieldChangeNotifier extends Process {
 			$button = $this->modules->get("InputfieldButton");
 			$button->type  = 'submit';
 			$button->id    = 'submit_delete';
-			$button->value = 'Remove selected watches';
+			$button->value = $this->_('Remove selected watches');
 			$button->class = $button->class . " align_right";
 		}
 		else
-			$table->row( array('Add a watch to get started','','','','') );
+			$table->row( array($this->_('Add a watch to get started'), '', '', '', '') );
 
-		$table->action(array('Add watch' => 'edit/?id=0'));
+		$table->action(array($this->_('Add watch') => 'edit/?id=0'));
 
 		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . (isset($button) ? $button->render() : '') . "</div></form>";
 	}
@@ -272,7 +271,7 @@ class ProcessFieldChangeNotifier extends Process {
 	 */
 	public function ___executeEdit() {
 
-		$this->fuel->breadcrumbs->add(new Breadcrumb('../', 'Field Change Notifier'));
+		$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Field Change Notifier')));
 
 		$id = (int) $this->input->get->id;
 		$m  = $this->modules;
@@ -283,7 +282,7 @@ class ProcessFieldChangeNotifier extends Process {
 			list($id, $f, $b, $a, $ru, $subject, $body) = $result->fetch_array();
 			list($r, $u) = explode("\n", $ru);
 			$fname = wire()->fields->get($f)->name;
-			$this->setFuel('processHeadline', "Edit Watch on \"$fname\"");
+			$this->setFuel('processHeadline', $this->_("Edit Watch on: ") . "$fname");
 
 		} else {
 			// Add new watch
@@ -295,7 +294,7 @@ class ProcessFieldChangeNotifier extends Process {
 			$u = '';
 			$subject = '{user.name>title} we spotted a change.';
 			$body    = 'Hello {user.name>title}, we just noticed that {meta.name} changed from {meta.old>strip} to {meta.new>strip}';
-			$this->setFuel('processHeadline', "Add Watch");
+			$this->setFuel('processHeadline', $this->_("Add Watch"));
 		}
 
 		$form = $m->get("InputfieldForm");
@@ -308,8 +307,8 @@ class ProcessFieldChangeNotifier extends Process {
 		$form->add($field);
 
 		$field = $m->get("InputfieldSelect");
-		$field->label = 'Select field to watch';
-		$field->description = 'Select a field you wish to watch';
+		$field->label = $this->_('Select field to watch');
+		$field->description = $this->_('Select a field you wish to watch');
 		$field->name = 'field';
 		$fields = wire()->fields;
 		foreach($fields as $pwf) {
@@ -322,8 +321,8 @@ class ProcessFieldChangeNotifier extends Process {
 		$form->add($field);
 
 		$field = $m->get("InputfieldText");
-		$field->label = 'Before value';
-		$field->description = 'Enter a value like "Hello". Use "*" to mean "Any value"';
+		$field->label = $this->_('Before value');
+		$field->description = $this->_('Enter a value like "Hello". Use "*" to mean "Any value"');
 		$field->name = 'before';
 		$field->id = 'before';
 		$field->columnWidth = 50;
@@ -331,8 +330,8 @@ class ProcessFieldChangeNotifier extends Process {
 		$form->add($field);
 
 		$field = $m->get("InputfieldText");
-		$field->label = 'After value';
-		$field->description = 'Enter a value like "Hello". Use "*" to mean "Any value"';
+		$field->label = $this->_('After value');
+		$field->description = $this->_('Enter a value like "Hello". Use "*" to mean "Any value"');
 		$field->name = 'after';
 		$field->id = 'after';
 		$field->columnWidth = 50;
@@ -340,9 +339,9 @@ class ProcessFieldChangeNotifier extends Process {
 		$form->add($field);
 
 		$fs = $m->get("InputfieldFieldset");
-		$fs->label = 'Select users and groups of users to be notified when this watch triggers';
+		$fs->label = $this->_('Select users and groups of users to be notified when this watch triggers');
 		$field = $m->get("InputfieldAsmSelect");
-		$field->label = 'Select the role(s) of the users you wish to have notified';
+		$field->label = $this->_('Select the role(s) of the users you wish to have notified');
 		$field->attr('id+name', 'roles');
 		$field->columnWidth = 50;
 		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
@@ -350,7 +349,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$fs->add($field);
 
 		$field = $m->get("InputfieldAsmSelect");
-		$field->label = 'Select individual users you wish to have notified';
+		$field->label = $this->_('Select individual users you wish to have notified');
 		$field->attr('id+name', 'users');
 		$field->columnWidth = 50;
 		foreach(wire('users') as $user) $field->addOption($user->id, $user->name);
@@ -362,22 +361,21 @@ class ProcessFieldChangeNotifier extends Process {
 		$field->attr('name', 'subject');
 		$field->attr('value', $subject);
 		$field->collapsed = Inputfield::collapsedYes;
-		$field->label = __("Subject for notification email", __FILE__);
+		$field->label = $this->_("Subject for notification email");
 		$form->add($field);
 
 		$field = $m->get("InputfieldTextarea");
 		$field->attr('name', 'body');
 		$field->attr('value', $body);
 		$field->collapsed = Inputfield::collapsedYes;
-		$field->label = __("Body for notification email", __FILE__);
-		//$field->description = __("You may include any user fields in the email by entering the field like this: {name}. ", __FILE__);
+		$field->label = $this->_("Body for notification email");
 		$form->add($field);
 
 
 		if($id > 0)
-			$text = 'Update Watch';
+			$text = $this->_('Update Watch');
 		else
-			$text = 'Add New Watch';
+			$text = $this->_('Add New Watch');
 		$field = $m->get('InputfieldSubmit');
 		$field->attr('class', $field->class . ' head_button_clone');
 		$field->value = $text;
@@ -403,13 +401,13 @@ class ProcessFieldChangeNotifier extends Process {
 
 
 		if($f == '' || $b == '' || $a == '' || ($r == '' && $u == '')) {
-			$this->error("No watch created, please check your values.");
+			$this->error($this->_("No watch created, please check your values."));
 			$this->session->redirect("../"); // back to list
 		}
 
 		$this->saveWatch($f, $b, $a, $r, $u, $subject, $body, $id);
 
-		$ru = self::expandRoleAndUserNames($r, $u);
+		$ru = self::expandRoleAndUserNames($r, $u, $this->_(' and '));
 
 		$fname = wire()->fields->get($f)->name;
 		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify user(s) $ru");
@@ -422,7 +420,7 @@ class ProcessFieldChangeNotifier extends Process {
 		$count = 0;
 
 		if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
-			$this->message("Nothing to delete");
+			$this->message($this->_("Nothing to delete"));
 			$this->session->redirect("../"); // back to list
 		}
 
@@ -432,7 +430,7 @@ class ProcessFieldChangeNotifier extends Process {
 			$count++;
 		}
 
-		$this->message("Watches deleted: " . $count);
+		$this->message($this->_("Watches deleted: ") . $count);
 		$this->session->redirect("../"); // back to list
 	}
 
