@@ -11,483 +11,483 @@
  **/
 class ProcessFieldChangeNotifier extends Process {
 
-	protected $watches_index = array();
+    protected $watches_index = array();
 
-	protected $debug = false;
-
-
-	public static function getModuleInfo() {
-		return array(
-			'title'     => 'Field Change Notifier',
-			'summary'   => __('Notify users of changes to fields', __FILE__),
-			'version'   => 50,
-			'permanent' => false,
-			'autoload'  => true,
-			'singular'  => true,
-			'author'    => 'Netcarver',
-			'requires'  => 'TextformatterTagParser',
-		);
-	}
+    protected $debug = false;
 
 
-	public function init() {
-		parent::init();
-		wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
-	}
+    public static function getModuleInfo() {
+        return array(
+            'title'     => 'Field Change Notifier',
+            'summary'   => __('Notify users of changes to fields', __FILE__),
+            'version'   => 50,
+            'permanent' => false,
+            'autoload'  => true,
+            'singular'  => true,
+            'author'    => 'Netcarver',
+            'requires'  => 'TextformatterTagParser',
+        );
+    }
 
 
-	public function hookPagesSaveReady(HookEvent $event) {
+    public function init() {
+        parent::init();
+        wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
+    }
+
+
+    public function hookPagesSaveReady(HookEvent $event) {
 
         $this->watches_index = array();
-		$result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
-		while($row = $result->fetch_assoc()) {
-			$this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
+        $result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
+        while($row = $result->fetch_assoc()) {
+            $this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
         }
 
-		$page    = $event->arguments[0];
-		$changes = $page->getChanges();
+        $page    = $event->arguments[0];
+        $changes = $page->getChanges();
 
-		foreach($changes as $change) {
+        foreach($changes as $change) {
 
-			$cid = wire()->fields->get($change)->id;
+            $cid = wire()->fields->get($change)->id;
 
-			// Skip this changed field if no watches setup on it...
-			if(!array_key_exists( $cid, $this->watches_index)) continue;
+            // Skip this changed field if no watches setup on it...
+            if(!array_key_exists( $cid, $this->watches_index)) continue;
 
-			$new     = wire()->input->post->$change;           // read the new value for the field
-			//if(!isset($new)) $new = 0;                         // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
-			$watches = @$this->watches_index[ $cid ][ (string) $new ];   // pull the watches on the field+new value combination
+            $new     = wire()->input->post->$change;           // read the new value for the field
+            //if(!isset($new)) $new = 0;                         // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
+            $watches = @$this->watches_index[ $cid ][ (string) $new ];   // pull the watches on the field+new value combination
 
-			if(empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
-				$watches = @$this->watches_index[ $cid ][ '*' ];
+            if(empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
+                $watches = @$this->watches_index[ $cid ][ '*' ];
 
-			// Skip this field if no watches on it @ new value...
-			if(empty($watches)) continue;
+            // Skip this field if no watches on it @ new value...
+            if(empty($watches)) continue;
 
-			// Get the old value of the field...
-			$db_field = $page->fields->$change->getTable();
-			$p_id     = $page->id;
-			$sql      = "SELECT `data` FROM `$db_field` WHERE `pages_id` = $p_id LIMIT 1";
-			$result   = $this->db->query( $sql )->fetch_assoc();
-			$old      = $result['data'];
+            // Get the old value of the field...
+            $db_field = $page->fields->$change->getTable();
+            $p_id     = $page->id;
+            $sql      = "SELECT `data` FROM `$db_field` WHERE `pages_id` = $p_id LIMIT 1";
+            $result   = $this->db->query( $sql )->fetch_assoc();
+            $old      = $result['data'];
 
-			foreach( $watches as $watch_old => $d ) {
-				// trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
-				if('*' == $watch_old || $watch_old == $old) {
-					$this->triggerMatch( $page, $change, $watch_old, $old, $new, $d );
-				}
-			}
-		}
+            foreach( $watches as $watch_old => $d ) {
+                // trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
+                if('*' == $watch_old || $watch_old == $old) {
+                    $this->triggerMatch( $page, $change, $watch_old, $old, $new, $d );
+                }
+            }
+        }
 
-	}
-
-
-	protected static function expandRoleAndUserNames($roles, $ids, $glue) {
-		$r = self::expandPageNames($roles, __(' or ', __FILE__));
-		$u = self::expandPageNames($ids,   __(' and ', __FILE__));
-
-		if($r) $o[] = __("with role(s)", __FILE__) . " $r";
-		if($u) $o[] = $u;
-		return implode($o, $glue);
-	}
+    }
 
 
-	/**
-	 * Expands an array or list of page ids into a string of page names.
-	 **/
-	protected static function expandPageNames($pages, $glue) {
-		$o = array();
+    protected static function expandRoleAndUserNames($roles, $ids, $glue) {
+        $r = self::expandPageNames($roles, __(' or ', __FILE__));
+        $u = self::expandPageNames($ids,   __(' and ', __FILE__));
 
-		if(!is_array($pages))
-			$pages = explode('|', $pages);
-		while(!empty($pages)) {
-			$pid = trim(array_pop($pages));
-			$o[] = wire()->pages->get("id=".$pid)->name;
-		}
-
-		asort($o);
-		return self::joinList($o, __(', ', __FILE__), $glue);
-	}
-
-	/**
-	 * Joins a list of strings with the given glue -- but uses a different glue for the last join.
-	 *
-	 * Can be used in languages such as English to produce a grammatically correct string from an
-	 * array of input strings.
-	 */
-	static public function joinList( $arr, $glue1, $last_glue )
-	{
-		if( !is_array($arr) )
-			return '';
-
-		$last = array_pop($arr);
-		$txt = implode( $glue1, $arr );
-		$arr[] = $last;
-		if( !empty($txt) )
-			$txt .= $last_glue.$last;
-		else
-			$txt = $last;
-
-		return $txt;
-	}
+        if($r) $o[] = __("with role(s)", __FILE__) . " $r";
+        if($u) $o[] = $u;
+        return implode($o, $glue);
+    }
 
 
+    /**
+     * Expands an array or list of page ids into a string of page names.
+     **/
+    protected static function expandPageNames($pages, $glue) {
+        $o = array();
 
-	protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data ) {
+        if(!is_array($pages))
+            $pages = explode('|', $pages);
+        while(!empty($pages)) {
+            $pid = trim(array_pop($pages));
+            $o[] = wire()->pages->get("id=".$pid)->name;
+        }
 
-		$rsel = $usel = 'id=0';
+        asort($o);
+        return self::joinList($o, __(', ', __FILE__), $glue);
+    }
 
-		list($roles, $users) = explode("\n", $data['roles_users']);
-		if($roles) $rsel = "roles=$roles, include=all";
-		if($users) $usel = "id=$users, include=all";
+    /**
+     * Joins a list of strings with the given glue -- but uses a different glue for the last join.
+     *
+     * Can be used in languages such as English to produce a grammatically correct string from an
+     * array of input strings.
+     */
+    static public function joinList( $arr, $glue1, $last_glue )
+    {
+        if( !is_array($arr) )
+            return '';
 
-		if($this->debug)
-			wire()->session->message($this->_('Roles selector: ') . "[$rsel]" . $this->_(', Users selector: ') . "[$usel]");
+        $last = array_pop($arr);
+        $txt = implode( $glue1, $arr );
+        $arr[] = $last;
+        if( !empty($txt) )
+            $txt .= $last_glue.$last;
+        else
+            $txt = $last;
 
-		$users_by_role = wire()->users->find($rsel);
-		$users_by_id   = wire()->users->find($usel);
+        return $txt;
+    }
 
-		// Any users with the matching role(s) or id(s)?
-		if(empty($users_by_role) && empty($users_by_id)) return;
 
-		$sent_to = array();
-		$context = array();
 
-		$meta = new WireData();
-		$meta
-			->set('name', $fname)
-			->set('old', $old)
-			->set('new', $new)
-			;
-		$field = wire()->fields->get($fname);
+    protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data ) {
 
-		$context['field'] = $field;
-		$context['meta']  = $meta;
+        $rsel = $usel = 'id=0';
+
+        list($roles, $users) = explode("\n", $data['roles_users']);
+        if($roles) $rsel = "roles=$roles, include=all";
+        if($users) $usel = "id=$users, include=all";
+
+        if($this->debug)
+            wire()->session->message($this->_('Roles selector: ') . "[$rsel]" . $this->_(', Users selector: ') . "[$usel]");
+
+        $users_by_role = wire()->users->find($rsel);
+        $users_by_id   = wire()->users->find($usel);
+
+        // Any users with the matching role(s) or id(s)?
+        if(empty($users_by_role) && empty($users_by_id)) return;
+
+        $sent_to = array();
+        $context = array();
+
+        $meta = new WireData();
+        $meta
+            ->set('name', $fname)
+            ->set('old', $old)
+            ->set('new', $new)
+            ;
+        $field = wire()->fields->get($fname);
+
+        $context['field'] = $field;
+        $context['meta']  = $meta;
         $context['page']  = $page;
 
-		$parser = $this->modules->get("TextformatterTagParser");
-		if($users_by_role->count()) {
-			foreach($users_by_role as $user)
-				$this->action($user, $parser, $sent_to, $data, $context);
-		}
-		if($users_by_id->count()) {
-			foreach($users_by_id as $user)
-				$this->action($user, $parser, $sent_to, $data, $context);
-		}
-		unset($parser);
+        $parser = $this->modules->get("TextformatterTagParser");
+        if($users_by_role->count()) {
+            foreach($users_by_role as $user)
+                $this->action($user, $parser, $sent_to, $data, $context);
+        }
+        if($users_by_id->count()) {
+            foreach($users_by_id as $user)
+                $this->action($user, $parser, $sent_to, $data, $context);
+        }
+        unset($parser);
 
-		if($this->debug && !empty($sent_to)) {
-			$sent_to = self::joinList($sent_to, $this->_(', '), $this->_(' and '));
-			wire()->session->message($this->_("Sent email to: ") . $sent_to );
-		}
+        if($this->debug && !empty($sent_to)) {
+            $sent_to = self::joinList($sent_to, $this->_(', '), $this->_(' and '));
+            wire()->session->message($this->_("Sent email to: ") . $sent_to );
+        }
 
-	}
+    }
 
 
-	protected function action($user, TextformatterTagParser &$parser, &$sent_to, $data, &$context) {
+    protected function action($user, TextformatterTagParser &$parser, &$sent_to, $data, &$context) {
 
-		$to = $user->email;
+        $to = $user->email;
 
-		if(!$to) return;
-		if(array_key_exists($to, $sent_to)) return; // don't send to same address twice - but I think PW eliminates duplicates anyway
+        if(!$to) return;
+        if(array_key_exists($to, $sent_to)) return; // don't send to same address twice - but I think PW eliminates duplicates anyway
 
-		$subject = $data['subject'];
-		$body    = $data['body'];
+        $subject = $data['subject'];
+        $body    = $data['body'];
 
-		$context['user']  = $user;
+        $context['user']  = $user;
 
-		$parser
-			->set('context', $context)
-			->set('email', false) ->format($body)
-			->set('email', true)  ->format($subject)
-			;
+        $parser
+            ->set('context', $context)
+            ->set('email', false) ->format($body)
+            ->set('email', true)  ->format($subject)
+            ;
 
-		$sent = $this->sendEmail( $to, $subject, $body );
-		if($sent)
-			$sent_to[$to] = $user->name;
-	}
+        $sent = $this->sendEmail( $to, $subject, $body );
+        if($sent)
+            $sent_to[$to] = $user->name;
+    }
 
 
-	protected function sendEmail( $to, $subject, $body ) {
-		$headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
-		$headers[] = "MIME-Version: 1.0";
-		$headers[] = "Content-type: text/plain; charset=UTF-8";
-		$headers[] = "Reply-To: blackhole@".$this->config->httpHost;
-
-		$sent = mail($to, $subject, $body, join("\r\n",$headers));
-		return $sent;
-	}
-
-
-
-	public function ___execute() {
-
-		$this->setFuel('processHeadline', 'Field Change Notifier');
-
-		$description = "<p class='description'>". nl2br($this->_("NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.\nUse a single * in either value column as a wildcard.")) . "</p>";
-
-		$result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
-
-		// generate the table of watches...
-		$table = $this->modules->get("MarkupAdminDataTable");
-		$table->setEncodeEntities(false);
-		$table->headerRow(array($this->_('When this field&#8230;'), $this->_('changes from this value&#8230;'), $this->_('to this value&#8230;'), $this->_('notify user(s) &#8230;'), $this->_('Delete')));
-
-		$n = 0;
-		while($row = $result->fetch_assoc()) {
-
-			$n++;
-
-			list($r, $u) = explode("\n", $row['roles_users']);
-
-			// output in table rows with edit link and delete checkbox
-			$table->row(array(
-				wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
-				$row['before'],
-				$row['after'],
-				self::expandRoleAndUserNames($r, $u, $this->_(" and ") . "&#8230;<br />"),
-				"<input type='checkbox' name='delete[]' value='$row[id]' />"
-				));
-		}
-
-		if($n) {
-			$button = $this->modules->get("InputfieldButton");
-			$button->type  = 'submit';
-			$button->id    = 'submit_delete';
-			$button->value = $this->_('Remove selected watches');
-			$button->class = $button->class . " align_right";
-		}
-		else
-			$table->row( array($this->_('Add a watch to get started'), '', '', '', '') );
-
-		$table->action(array($this->_('Add watch') => 'edit/?id=0'));
-
-		return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . (isset($button) ? $button->render() : '') . "</div></form>";
-	}
-
-
-	/**
-	 * Edit/Add Redirect - Called when the URL is: ./edit/
-	 */
-	public function ___executeEdit() {
-
-		$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Field Change Notifier')));
-
-		$id = (int) $this->input->get->id;
-		$m  = $this->modules;
-
-		if($id > 0) {
-			// Edit existing watch
-			$result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
-			list($id, $f, $b, $a, $ru, $subject, $body) = $result->fetch_array();
-			list($r, $u) = explode("\n", $ru);
-			$fname = wire()->fields->get($f)->name;
-			$this->setFuel('processHeadline', $this->_("Edit Watch on: ") . "$fname");
-
-		} else {
-			// Add new watch
-			$id = 0;
-			$f = '';
-			$b = '*';
-			$a = '*';
-			$r = '';
-			$u = '';
-			$subject = '{user.name>title} we spotted a change.';
-			$body    = 'Hello {user.name>title}, we just noticed that {meta.name} changed from {meta.old>strip} to {meta.new>strip}';
-			$this->setFuel('processHeadline', $this->_("Add Watch"));
-		}
-
-		$form = $m->get("InputfieldForm");
-		$form->method = 'post';
-		$form->action = '../save/';
-
-		$field = $m->get("InputfieldHidden");
-		$field->name = 'id';
-		$field->value = $id;
-		$form->add($field);
-
-		$field = $m->get("InputfieldSelect");
-		$field->label = $this->_('Select field to watch');
-		$field->description = $this->_('Select a field you wish to watch');
-		$field->name = 'field';
-		$fields = wire()->fields;
-		foreach($fields as $pwf) {
-			$atts = array();
-			$name = $pwf->name;
-			if($pwf->flags & Field::flagSystem) $name .= "*";
-			if($pwf->id == $f) $atts['selected'] = 'selected';
-			$field->addOption( $pwf->id, $name, $atts );
-		}
-		$form->add($field);
-
-		$field = $m->get("InputfieldText");
-		$field->label = $this->_('Before value');
-		$field->description = $this->_('Enter a value like "Hello". Use "*" to mean "Any value"');
-		$field->name = 'before';
-		$field->id = 'before';
-		$field->columnWidth = 50;
-		$field->value = $b;
-		$form->add($field);
-
-		$field = $m->get("InputfieldText");
-		$field->label = $this->_('After value');
-		$field->description = $this->_('Enter a value like "Hello". Use "*" to mean "Any value"');
-		$field->name = 'after';
-		$field->id = 'after';
-		$field->columnWidth = 50;
-		$field->value = $a;
-		$form->add($field);
-
-		$fs = $m->get("InputfieldFieldset");
-		$fs->label = $this->_('Select users and groups of users to be notified when this watch triggers');
-		$field = $m->get("InputfieldAsmSelect");
-		$field->label = $this->_('Select the role(s) of the users you wish to have notified');
-		$field->attr('id+name', 'roles');
-		$field->columnWidth = 50;
-		foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
-		$field->attr('value', explode("|", $r) );
-		$fs->add($field);
-
-		$field = $m->get("InputfieldAsmSelect");
-		$field->label = $this->_('Select individual users you wish to have notified');
-		$field->attr('id+name', 'users');
-		$field->columnWidth = 50;
-		foreach(wire('users') as $user) $field->addOption($user->id, $user->name);
-		$field->attr('value', explode("|", $u) );
-		$fs->add($field);
-		$form->add($fs);
-
-		$field = $m->get("InputfieldText");
-		$field->attr('name', 'subject');
-		$field->attr('value', $subject);
-		$field->collapsed = Inputfield::collapsedYes;
-		$field->label = $this->_("Subject for notification email");
-		$form->add($field);
-
-		$field = $m->get("InputfieldTextarea");
-		$field->attr('name', 'body');
-		$field->attr('value', $body);
-		$field->collapsed = Inputfield::collapsedYes;
-		$field->label = $this->_("Body for notification email");
-		$form->add($field);
-
-
-		if($id > 0)
-			$text = $this->_('Update Watch');
-		else
-			$text = $this->_('Add New Watch');
-		$field = $m->get('InputfieldSubmit');
-		$field->attr('class', $field->class . ' head_button_clone');
-		$field->value = $text;
-		$form->add($field);
-
-		return $form->render();
-	}
-
-
-	/**
-	 * Save Redirect - Called when the URL is ./save/
-	 */
-	public function ___executeSave() {
-
-		$id = (int) $this->input->post->id;
-		$f = $this->input->post->field;
-		$b = $this->input->post->before;
-		$a = $this->input->post->after;
-		$r = $this->input->post->roles;
-		$u = $this->input->post->users;
-		$subject = $this->input->post->subject;
-		$body    = $this->input->post->body;
-
-
-		if($f == '' || $b == '' || $a == '' || ($r == '' && $u == '')) {
-			$this->error($this->_("No watch created, please check your values."));
-			$this->session->redirect("../"); // back to list
-		}
-
-		$this->saveWatch($f, $b, $a, $r, $u, $subject, $body, $id);
-
-		$ru = self::expandRoleAndUserNames($r, $u, $this->_(' and '));
-
-		$fname = wire()->fields->get($f)->name;
-		$this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify user(s) $ru");
-		$this->session->redirect("../"); // back to list
-
-	}
-
-
-	public function ___executeDelete() {
-		$count = 0;
-
-		if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
-			$this->message($this->_("Nothing to delete"));
-			$this->session->redirect("../"); // back to list
-		}
-
-		foreach($this->input->post->delete as $id) {
-			$id = (int) $id;
-			$this->db->query("DELETE FROM {$this->className} WHERE id=$id");
-			$count++;
-		}
-
-		$this->message($this->_("Watches deleted: ") . $count);
-		$this->session->redirect("../"); // back to list
-	}
-
-
-
-	private function saveWatch($f, $b, $a, $r, $u, $subject, $body, $id = 0) {
-
-		$f = $this->db->escape_string($f);
-		$b = $this->db->escape_string($b);
-		$a = $this->db->escape_string($a);
-		$r = implode('|', $r);
-		$u = implode('|', $u);
-		$ru = $this->db->escape_string($r . "\n" . $u);
-		$subject = $this->db->escape_string($subject);
-		$body    = $this->db->escape_string($body);
-
-		if($id == 0)
-			$sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
-		else
-			$sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' WHERE id = $id";
-
-		return $this->db->query($sql);
-	}
-
-
-	public function ___install() {
-
-		parent::___install();
-
-		$sql = <<< _SQL
-		CREATE TABLE {$this->className} (
-			`id`          int unsigned NOT NULL auto_increment,
-			`field`       varchar(255)  NOT NULL DEFAULT '',
-			`before`      varchar(255)  NOT NULL DEFAULT '',
-			`after`       varchar(255)  NOT NULL DEFAULT '',
-			`roles_users` varchar(255)  NOT NULL DEFAULT '',
-			`subject`     varchar(255)  NOT NULL DEFAULT 'Subject',
-			`body`        varchar(2048) NOT NULL DEFAULT 'Body',
-			PRIMARY KEY(`id`)
-		) ENGINE = INNODB;
-_SQL;
-		$this->db->query($sql);
-
-		$p = new Page();
-		$p->template = $this->templates->get("admin");
-		$p->parent = $this->pages->get("template=admin, name=setup");
-		$p->title = 'Field Change Notifier';
-		$p->name  = __CLASS__;
-		$p->process = $this;
-		$p->save();
-
-	}
-
-
-	public function ___uninstall() {
-		$p = $this->pages->get('template=admin, name=' . __CLASS__);
-		$p->delete();
-		$this->db->query("DROP TABLE {$this->className}");
-	}
+    protected function sendEmail( $to, $subject, $body ) {
+        $headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
+        $headers[] = "MIME-Version: 1.0";
+        $headers[] = "Content-type: text/plain; charset=UTF-8";
+        $headers[] = "Reply-To: blackhole@".$this->config->httpHost;
+
+        $sent = mail($to, $subject, $body, join("\r\n",$headers));
+        return $sent;
+    }
+
+
+
+    public function ___execute() {
+
+        $this->setFuel('processHeadline', 'Field Change Notifier');
+
+        $description = "<p class='description'>". nl2br($this->_("NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.\nUse a single * in either value column as a wildcard.")) . "</p>";
+
+        $result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
+
+        // generate the table of watches...
+        $table = $this->modules->get("MarkupAdminDataTable");
+        $table->setEncodeEntities(false);
+        $table->headerRow(array($this->_('When this field&#8230;'), $this->_('changes from this value&#8230;'), $this->_('to this value&#8230;'), $this->_('notify user(s) &#8230;'), $this->_('Delete')));
+
+        $n = 0;
+        while($row = $result->fetch_assoc()) {
+
+            $n++;
+
+            list($r, $u) = explode("\n", $row['roles_users']);
+
+            // output in table rows with edit link and delete checkbox
+            $table->row(array(
+                wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
+                $row['before'],
+                $row['after'],
+                self::expandRoleAndUserNames($r, $u, $this->_(" and ") . "&#8230;<br />"),
+                "<input type='checkbox' name='delete[]' value='$row[id]' />"
+            ));
+        }
+
+        if($n) {
+            $button = $this->modules->get("InputfieldButton");
+            $button->type  = 'submit';
+            $button->id    = 'submit_delete';
+            $button->value = $this->_('Remove selected watches');
+            $button->class = $button->class . " align_right";
+        }
+        else
+            $table->row( array($this->_('Add a watch to get started'), '', '', '', '') );
+
+        $table->action(array($this->_('Add watch') => 'edit/?id=0'));
+
+        return $description . "<form id='field_change_notified_form' action='./delete/' method='post'><div class='ui-helper-clearfix' />" . $table->render() . (isset($button) ? $button->render() : '') . "</div></form>";
+    }
+
+
+    /**
+     * Edit/Add Redirect - Called when the URL is: ./edit/
+     */
+    public function ___executeEdit() {
+
+        $this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Field Change Notifier')));
+
+        $id = (int) $this->input->get->id;
+        $m  = $this->modules;
+
+        if($id > 0) {
+            // Edit existing watch
+            $result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
+            list($id, $f, $b, $a, $ru, $subject, $body) = $result->fetch_array();
+            list($r, $u) = explode("\n", $ru);
+            $fname = wire()->fields->get($f)->name;
+            $this->setFuel('processHeadline', $this->_("Edit Watch on: ") . "$fname");
+
+        } else {
+            // Add new watch
+            $id = 0;
+            $f = '';
+            $b = '*';
+            $a = '*';
+            $r = '';
+            $u = '';
+            $subject = '{user.name>title} we spotted a change.';
+            $body    = 'Hello {user.name>title}, we just noticed that {meta.name} changed from {meta.old>strip} to {meta.new>strip}';
+            $this->setFuel('processHeadline', $this->_("Add Watch"));
+        }
+
+        $form = $m->get("InputfieldForm");
+        $form->method = 'post';
+        $form->action = '../save/';
+
+        $field = $m->get("InputfieldHidden");
+        $field->name = 'id';
+        $field->value = $id;
+        $form->add($field);
+
+        $field = $m->get("InputfieldSelect");
+        $field->label = $this->_('Select field to watch');
+        $field->description = $this->_('Select a field you wish to watch');
+        $field->name = 'field';
+        $fields = wire()->fields;
+        foreach($fields as $pwf) {
+            $atts = array();
+            $name = $pwf->name;
+            if($pwf->flags & Field::flagSystem) $name .= "*";
+            if($pwf->id == $f) $atts['selected'] = 'selected';
+            $field->addOption( $pwf->id, $name, $atts );
+        }
+        $form->add($field);
+
+        $field = $m->get("InputfieldText");
+        $field->label = $this->_('Before value');
+        $field->description = $this->_('Enter a value like "Hello". Use "*" to mean "Any value"');
+        $field->name = 'before';
+        $field->id = 'before';
+        $field->columnWidth = 50;
+        $field->value = $b;
+        $form->add($field);
+
+        $field = $m->get("InputfieldText");
+        $field->label = $this->_('After value');
+        $field->description = $this->_('Enter a value like "Hello". Use "*" to mean "Any value"');
+        $field->name = 'after';
+        $field->id = 'after';
+        $field->columnWidth = 50;
+        $field->value = $a;
+        $form->add($field);
+
+        $fs = $m->get("InputfieldFieldset");
+        $fs->label = $this->_('Select users and groups of users to be notified when this watch triggers');
+        $field = $m->get("InputfieldAsmSelect");
+        $field->label = $this->_('Select the role(s) of the users you wish to have notified');
+        $field->attr('id+name', 'roles');
+        $field->columnWidth = 50;
+        foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
+        $field->attr('value', explode("|", $r) );
+        $fs->add($field);
+
+        $field = $m->get("InputfieldAsmSelect");
+        $field->label = $this->_('Select individual users you wish to have notified');
+        $field->attr('id+name', 'users');
+        $field->columnWidth = 50;
+        foreach(wire('users') as $user) $field->addOption($user->id, $user->name);
+        $field->attr('value', explode("|", $u) );
+        $fs->add($field);
+        $form->add($fs);
+
+        $field = $m->get("InputfieldText");
+        $field->attr('name', 'subject');
+        $field->attr('value', $subject);
+        $field->collapsed = Inputfield::collapsedYes;
+        $field->label = $this->_("Subject for notification email");
+        $form->add($field);
+
+        $field = $m->get("InputfieldTextarea");
+        $field->attr('name', 'body');
+        $field->attr('value', $body);
+        $field->collapsed = Inputfield::collapsedYes;
+        $field->label = $this->_("Body for notification email");
+        $form->add($field);
+
+
+        if($id > 0)
+            $text = $this->_('Update Watch');
+        else
+            $text = $this->_('Add New Watch');
+        $field = $m->get('InputfieldSubmit');
+        $field->attr('class', $field->class . ' head_button_clone');
+        $field->value = $text;
+        $form->add($field);
+
+        return $form->render();
+    }
+
+
+    /**
+     * Save Redirect - Called when the URL is ./save/
+     */
+    public function ___executeSave() {
+
+        $id = (int) $this->input->post->id;
+        $f = $this->input->post->field;
+        $b = $this->input->post->before;
+        $a = $this->input->post->after;
+        $r = $this->input->post->roles;
+        $u = $this->input->post->users;
+        $subject = $this->input->post->subject;
+        $body    = $this->input->post->body;
+
+
+        if($f == '' || $b == '' || $a == '' || ($r == '' && $u == '')) {
+            $this->error($this->_("No watch created, please check your values."));
+            $this->session->redirect("../"); // back to list
+        }
+
+        $this->saveWatch($f, $b, $a, $r, $u, $subject, $body, $id);
+
+        $ru = self::expandRoleAndUserNames($r, $u, $this->_(' and '));
+
+        $fname = wire()->fields->get($f)->name;
+        $this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify user(s) $ru");
+        $this->session->redirect("../"); // back to list
+
+    }
+
+
+    public function ___executeDelete() {
+        $count = 0;
+
+        if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
+            $this->message($this->_("Nothing to delete"));
+            $this->session->redirect("../"); // back to list
+        }
+
+        foreach($this->input->post->delete as $id) {
+            $id = (int) $id;
+            $this->db->query("DELETE FROM {$this->className} WHERE id=$id");
+            $count++;
+        }
+
+        $this->message($this->_("Watches deleted: ") . $count);
+        $this->session->redirect("../"); // back to list
+    }
+
+
+
+    private function saveWatch($f, $b, $a, $r, $u, $subject, $body, $id = 0) {
+
+        $f = $this->db->escape_string($f);
+        $b = $this->db->escape_string($b);
+        $a = $this->db->escape_string($a);
+        $r = implode('|', $r);
+        $u = implode('|', $u);
+        $ru = $this->db->escape_string($r . "\n" . $u);
+        $subject = $this->db->escape_string($subject);
+        $body    = $this->db->escape_string($body);
+
+        if($id == 0)
+            $sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
+        else
+            $sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' WHERE id = $id";
+
+        return $this->db->query($sql);
+    }
+
+
+    public function ___install() {
+
+        parent::___install();
+
+        $sql = <<< _SQL
+            CREATE TABLE {$this->className} (
+                `id`          int unsigned NOT NULL auto_increment,
+                `field`       varchar(255)  NOT NULL DEFAULT '',
+                `before`      varchar(255)  NOT NULL DEFAULT '',
+                `after`       varchar(255)  NOT NULL DEFAULT '',
+                `roles_users` varchar(255)  NOT NULL DEFAULT '',
+                `subject`     varchar(255)  NOT NULL DEFAULT 'Subject',
+                `body`        varchar(2048) NOT NULL DEFAULT 'Body',
+                PRIMARY KEY(`id`)
+            ) ENGINE = INNODB;
+        _SQL;
+        $this->db->query($sql);
+
+        $p = new Page();
+        $p->template = $this->templates->get("admin");
+        $p->parent = $this->pages->get("template=admin, name=setup");
+        $p->title = 'Field Change Notifier';
+        $p->name  = __CLASS__;
+        $p->process = $this;
+        $p->save();
+
+    }
+
+
+    public function ___uninstall() {
+        $p = $this->pages->get('template=admin, name=' . __CLASS__);
+        $p->delete();
+        $this->db->query("DROP TABLE {$this->className}");
+    }
 }
