@@ -471,7 +471,7 @@ class ProcessFieldChangeNotifier extends Process {
                 `body`        varchar(2048) NOT NULL DEFAULT 'Body',
                 PRIMARY KEY(`id`)
             ) ENGINE = INNODB;
-        _SQL;
+_SQL;
         $this->db->query($sql);
 
         $p = new Page();
@@ -491,3 +491,5 @@ class ProcessFieldChangeNotifier extends Process {
         $this->db->query("DROP TABLE {$this->className}");
     }
 }
+
+// eof
