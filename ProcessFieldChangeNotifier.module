@@ -43,29 +43,34 @@ class ProcessFieldChangeNotifier extends Process
     {
         $this->watches_index = array();
         $result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
-        while($row = $result->fetch_assoc()) {
+        while ($row = $result->fetch_assoc()) {
             $this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
         }
 
         $page    = $event->arguments[0];
         $changes = $page->getChanges();
 
-        foreach($changes as $change) {
+        foreach ($changes as $change) {
 
             $cid = wire()->fields->get($change)->id;
 
             // Skip this changed field if no watches setup on it...
-            if(!array_key_exists( $cid, $this->watches_index)) continue;
+            if (!array_key_exists( $cid, $this->watches_index)) {
+                continue;
+            }
 
             $new     = wire()->input->post->$change;           // read the new value for the field
             //if(!isset($new)) $new = 0;                         // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
             $watches = @$this->watches_index[ $cid ][ (string) $new ];   // pull the watches on the field+new value combination
 
-            if(empty($watches))                                // Try for wildcard matches on new field value if nothing more specific available
+            if (empty($watches)) {                               // Try for wildcard matches on new field value if nothing more specific available
                 $watches = @$this->watches_index[ $cid ][ '*' ];
+            }
 
             // Skip this field if no watches on it @ new value...
-            if(empty($watches)) continue;
+            if (empty($watches)) {
+                continue;
+            }
 
             // Get the old value of the field...
             $db_field = $page->fields->$change->getTable();
@@ -74,14 +79,13 @@ class ProcessFieldChangeNotifier extends Process
             $result   = $this->db->query( $sql )->fetch_assoc();
             $old      = $result['data'];
 
-            foreach( $watches as $watch_old => $d ) {
+            foreach ($watches as $watch_old => $d ) {
                 // trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
-                if('*' == $watch_old || $watch_old == $old) {
+                if ('*' == $watch_old || $watch_old == $old) {
                     $this->triggerMatch( $page, $change, $watch_old, $old, $new, $d );
                 }
             }
         }
-
     }
 
 
@@ -90,8 +94,14 @@ class ProcessFieldChangeNotifier extends Process
         $r = self::expandPageNames($roles, __(' or ', __FILE__));
         $u = self::expandPageNames($ids,   __(' and ', __FILE__));
 
-        if($r) $o[] = __("with role(s)", __FILE__) . " $r";
-        if($u) $o[] = $u;
+        if($r) {
+            $o[] = __("with role(s)", __FILE__) . " $r";
+        }
+
+        if($u) {
+            $o[] = $u;
+        }
+
         return implode($o, $glue);
     }
 
@@ -103,9 +113,11 @@ class ProcessFieldChangeNotifier extends Process
     {
         $o = array();
 
-        if(!is_array($pages))
+        if (!is_array($pages)) {
             $pages = explode('|', $pages);
-        while(!empty($pages)) {
+        }
+
+        while (!empty($pages)) {
             $pid = trim(array_pop($pages));
             $o[] = wire()->pages->get("id=".$pid)->name;
         }
@@ -123,16 +135,18 @@ class ProcessFieldChangeNotifier extends Process
      */
     static public function joinList( $arr, $glue1, $last_glue )
     {
-        if( !is_array($arr) )
+        if (!is_array($arr)) {
             return '';
+        }
 
         $last = array_pop($arr);
         $txt = implode( $glue1, $arr );
         $arr[] = $last;
-        if( !empty($txt) )
+        if (!empty($txt)) {
             $txt .= $last_glue.$last;
-        else
+        } else {
             $txt = $last;
+        }
 
         return $txt;
     }
@@ -144,17 +158,26 @@ class ProcessFieldChangeNotifier extends Process
         $rsel = $usel = 'id=0';
 
         list($roles, $users) = explode("\n", $data['roles_users']);
-        if($roles) $rsel = "roles=$roles, include=all";
-        if($users) $usel = "id=$users, include=all";
 
-        if($this->debug)
+        if ($roles) {
+            $rsel = "roles=$roles, include=all";
+        }
+
+        if ($users) {
+            $usel = "id=$users, include=all";
+        }
+
+        if ($this->debug) {
             wire()->session->message($this->_('Roles selector: ') . "[$rsel]" . $this->_(', Users selector: ') . "[$usel]");
+        }
 
         $users_by_role = wire()->users->find($rsel);
         $users_by_id   = wire()->users->find($usel);
 
         // Any users with the matching role(s) or id(s)?
-        if(empty($users_by_role) && empty($users_by_id)) return;
+        if (empty($users_by_role) && empty($users_by_id)) {
+            return;
+        }
 
         $sent_to = array();
         $context = array();
@@ -172,17 +195,19 @@ class ProcessFieldChangeNotifier extends Process
         $context['page']  = $page;
 
         $parser = $this->modules->get("TextformatterTagParser");
-        if($users_by_role->count()) {
-            foreach($users_by_role as $user)
+        if ($users_by_role->count()) {
+            foreach ($users_by_role as $user) {
                 $this->action($user, $parser, $sent_to, $data, $context);
+            }
         }
-        if($users_by_id->count()) {
-            foreach($users_by_id as $user)
+        if ($users_by_id->count()) {
+            foreach ($users_by_id as $user) {
                 $this->action($user, $parser, $sent_to, $data, $context);
+            }
         }
         unset($parser);
 
-        if($this->debug && !empty($sent_to)) {
+        if ($this->debug && !empty($sent_to)) {
             $sent_to = self::joinList($sent_to, $this->_(', '), $this->_(' and '));
             wire()->session->message($this->_("Sent email to: ") . $sent_to );
         }
@@ -193,8 +218,13 @@ class ProcessFieldChangeNotifier extends Process
     {
         $to = $user->email;
 
-        if(!$to) return;
-        if(array_key_exists($to, $sent_to)) return; // don't send to same address twice - but I think PW eliminates duplicates anyway
+        if (!$to) {
+            return;
+        }
+
+        if (array_key_exists($to, $sent_to)) {
+            return; // don't send to same address twice - but I think PW eliminates duplicates anyway
+        }
 
         $subject = $data['subject'];
         $body    = $data['body'];
@@ -208,8 +238,9 @@ class ProcessFieldChangeNotifier extends Process
             ;
 
         $sent = $this->sendEmail( $to, $subject, $body );
-        if($sent)
+        if ($sent) {
             $sent_to[$to] = $user->name;
+        }
     }
 
 
@@ -240,10 +271,8 @@ class ProcessFieldChangeNotifier extends Process
         $table->headerRow(array($this->_('When this field&#8230;'), $this->_('changes from this value&#8230;'), $this->_('to this value&#8230;'), $this->_('notify user(s) &#8230;'), $this->_('Delete')));
 
         $n = 0;
-        while($row = $result->fetch_assoc()) {
-
+        while ($row = $result->fetch_assoc()) {
             $n++;
-
             list($r, $u) = explode("\n", $row['roles_users']);
 
             // output in table rows with edit link and delete checkbox
@@ -256,15 +285,15 @@ class ProcessFieldChangeNotifier extends Process
             ));
         }
 
-        if($n) {
+        if ($n) {
             $button = $this->modules->get("InputfieldButton");
             $button->type  = 'submit';
             $button->id    = 'submit_delete';
             $button->value = $this->_('Remove selected watches');
             $button->class = $button->class . " align_right";
-        }
-        else
+        } else {
             $table->row( array($this->_('Add a watch to get started'), '', '', '', '') );
+        }
 
         $table->action(array($this->_('Add watch') => 'edit/?id=0'));
 
@@ -282,7 +311,7 @@ class ProcessFieldChangeNotifier extends Process
         $id = (int) $this->input->get->id;
         $m  = $this->modules;
 
-        if($id > 0) {
+        if ($id > 0) {
             // Edit existing watch
             $result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
             list($id, $f, $b, $a, $ru, $subject, $body) = $result->fetch_array();
@@ -317,11 +346,15 @@ class ProcessFieldChangeNotifier extends Process
         $field->description = $this->_('Select a field you wish to watch');
         $field->name = 'field';
         $fields = wire()->fields;
-        foreach($fields as $pwf) {
+        foreach ($fields as $pwf) {
             $atts = array();
             $name = $pwf->name;
-            if($pwf->flags & Field::flagSystem) $name .= "*";
-            if($pwf->id == $f) $atts['selected'] = 'selected';
+            if ($pwf->flags & Field::flagSystem) {
+                $name .= "*";
+            }
+            if ($pwf->id == $f) {
+                $atts['selected'] = 'selected';
+            }
             $field->addOption( $pwf->id, $name, $atts );
         }
         $form->add($field);
@@ -350,7 +383,9 @@ class ProcessFieldChangeNotifier extends Process
         $field->label = $this->_('Select the role(s) of the users you wish to have notified');
         $field->attr('id+name', 'roles');
         $field->columnWidth = 50;
-        foreach(wire('roles') as $role) $field->addOption($role->id, $role->name);
+        foreach (wire('roles') as $role) {
+            $field->addOption($role->id, $role->name);
+        }
         $field->attr('value', explode("|", $r) );
         $fs->add($field);
 
@@ -358,7 +393,9 @@ class ProcessFieldChangeNotifier extends Process
         $field->label = $this->_('Select individual users you wish to have notified');
         $field->attr('id+name', 'users');
         $field->columnWidth = 50;
-        foreach(wire('users') as $user) $field->addOption($user->id, $user->name);
+        foreach (wire('users') as $user) {
+            $field->addOption($user->id, $user->name);
+        }
         $field->attr('value', explode("|", $u) );
         $fs->add($field);
         $form->add($fs);
@@ -377,11 +414,11 @@ class ProcessFieldChangeNotifier extends Process
         $field->label = $this->_("Body for notification email");
         $form->add($field);
 
-
-        if($id > 0)
+        if ($id > 0) {
             $text = $this->_('Update Watch');
-        else
+        } else {
             $text = $this->_('Add New Watch');
+        }
         $field = $m->get('InputfieldSubmit');
         $field->attr('class', $field->class . ' head_button_clone');
         $field->value = $text;
@@ -425,12 +462,12 @@ class ProcessFieldChangeNotifier extends Process
     {
         $count = 0;
 
-        if(!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
+        if (!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
             $this->message($this->_("Nothing to delete"));
             $this->session->redirect("../"); // back to list
         }
 
-        foreach($this->input->post->delete as $id) {
+        foreach ($this->input->post->delete as $id) {
             $id = (int) $id;
             $this->db->query("DELETE FROM {$this->className} WHERE id=$id");
             $count++;
@@ -452,10 +489,11 @@ class ProcessFieldChangeNotifier extends Process
         $subject = $this->db->escape_string($subject);
         $body    = $this->db->escape_string($body);
 
-        if($id == 0)
+        if ($id == 0) {
             $sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
-        else
+        } else {
             $sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' WHERE id = $id";
+        }
 
         return $this->db->query($sql);
     }
