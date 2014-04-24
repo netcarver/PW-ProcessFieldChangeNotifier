@@ -2,8 +2,6 @@
 
 /**
  * TODO Fix detection of * => zero values
- * TODO Add detection of * => empty and empty => * values
- * TODO Add support for empty strings in before/after condition
  * TODO Change from & to inputfields to reflect the type of the watched field?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
  * TODO Switch to a 1-trigger -> n-actions schama
@@ -22,7 +20,7 @@ class ProcessFieldChangeNotifier extends Process
         return array(
             'title'     => __('Field Change Notifier', __FILE__),
             'summary'   => __('Notify users of changes to fields', __FILE__),
-            'version'   => 50,
+            'version'   => 51,
             'permanent' => false,
             'autoload'  => true,
             'singular'  => true,
@@ -44,7 +42,7 @@ class ProcessFieldChangeNotifier extends Process
         $this->watches_index = array();
         $result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
         while ($row = $result->fetch_assoc()) {
-            $this->watches_index[ $row['field'] ][ $row['after'] ][ $row['before'] ] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
+            $this->watches_index[$row['field']] [$row['after']] [$row['before']] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
         }
 
         $page    = $event->arguments[0];
@@ -447,8 +445,7 @@ class ProcessFieldChangeNotifier extends Process
         $subject = $this->input->post->subject;
         $body    = $this->input->post->body;
 
-
-        if($f == '' || $b == '' || $a == '' || ($r == '' && $u == '')) {
+        if ($f == '' || ($r == '' && $u == '')) {
             $this->error($this->_("No watch created, please check your values."));
             $this->session->redirect("../"); // back to list
         }
