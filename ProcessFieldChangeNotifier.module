@@ -155,8 +155,16 @@ class ProcessFieldChangeNotifier extends Process
     }
 
 
+    /**
+     * Hookable triggerMatch method
+     */
+    protected function ___triggerMatch($page, $fname, $watch_old, $old, $new, $data)
+    {
+        $this->sendEmails($page, $fname, $old, $new, $data);
+    }
 
-    protected function triggerMatch( $page, $fname, $watch_old, $old, $new, $data )
+
+    protected function sendEmails($page, $fname, $old, $new, $data)
     {
         $rsel = $usel = 'id=0';
 
@@ -200,24 +208,24 @@ class ProcessFieldChangeNotifier extends Process
         $parser = $this->modules->get("TextformatterTagParser");
         if ($users_by_role->count()) {
             foreach ($users_by_role as $user) {
-                $this->action($user, $parser, $sent_to, $data, $context);
+                $this->formatAndSendEmail($user, $parser, $sent_to, $data, $context);
             }
         }
         if ($users_by_id->count()) {
             foreach ($users_by_id as $user) {
-                $this->action($user, $parser, $sent_to, $data, $context);
+                $this->formatAndSendEmail($user, $parser, $sent_to, $data, $context);
             }
         }
         unset($parser);
 
         if ($this->debug && !empty($sent_to)) {
             $sent_to = self::joinList($sent_to, $this->_(', '), $this->_(' and '));
-            wire()->session->message($this->_("Sent email to: ") . $sent_to );
+            wire()->session->message($this->_("Sent email to: ") . $sent_to);
         }
     }
 
 
-    protected function action($user, TextformatterTagParser &$parser, &$sent_to, $data, &$context)
+    protected function formatAndSendEmail($user, TextformatterTagParser &$parser, &$sent_to, $data, &$context)
     {
         $to = $user->email;
 
