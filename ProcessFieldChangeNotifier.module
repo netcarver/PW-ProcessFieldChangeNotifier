@@ -20,7 +20,7 @@ class ProcessFieldChangeNotifier extends Process
         return array(
             'title'     => __('Field Change Notifier', __FILE__),
             'summary'   => __('Notify users of changes to fields', __FILE__),
-            'version'   => 51,
+            'version'   => 60,
             'permanent' => false,
             'autoload'  => true,
             'singular'  => true,
