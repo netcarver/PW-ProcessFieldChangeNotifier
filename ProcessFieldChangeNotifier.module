@@ -5,7 +5,6 @@
  * TODO Change from & to inputfields to reflect the type of the watched field?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
  * TODO Switch to a 1-trigger -> n-actions schama
- * TODO Make the triggerActions() method hookable => this becomes an engine for other modules/code
  */
 
 class ProcessFieldChangeNotifier extends Process
