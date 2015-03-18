@@ -43,9 +43,6 @@ class ProcessFieldChangeNotifier extends Process
 
     public function init()
     {
-        $info = self::getModuleInfo();
-        $version = $info['version'];
-
         parent::init();
 
         wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
@@ -101,7 +98,7 @@ class ProcessFieldChangeNotifier extends Process
        
             // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
             //if(!isset($new)) $new = 0;
-
+           
             // pull the watches on the field+new value combination
             $watches = @$this->watches_index[$cid][(string) $new];
 
@@ -647,6 +644,7 @@ _SQL;
         $p->process = $this;
         $p->save();
     }
+
 
     private function updateSchema()
     {
