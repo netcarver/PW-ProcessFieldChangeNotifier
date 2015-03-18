@@ -5,64 +5,110 @@
  * TODO Change from & to inputfields to reflect the type of the watched field?
  * TODO Add new watcher-roles to be created on-the-fly and users added to it?
  * TODO Switch to a 1-trigger -> n-actions schama
+ *
+ * Template restriction and watches for built-in page reference fields added by Renobird
+ * 
  */
 
 class ProcessFieldChangeNotifier extends Process
 {
     protected $watches_index = array();
-
+    protected $templates_index = array();
     protected $debug = false;
-
 
     public static function getModuleInfo()
     {
         return array(
             'title'     => __('Field Change Notifier', __FILE__),
             'summary'   => __('Notify users of changes to fields', __FILE__),
-            'version'   => 60,
+            'version'   => 70,
             'permanent' => false,
             'autoload'  => true,
             'singular'  => true,
-            'author'    => 'Netcarver',
+            'author'    => 'Netcarver, Renobird',
             'requires'  => 'TextformatterTagParser',
         );
     }
 
+    // Only some built-in fields that are part of the pages table can be used.
+    // see savePageQuery() $data array in /wire/core/Pages.php
+    // modified_user_id support is added by specifying $page->modifiedUser = $this->user in hookPagesSaveReady(); 
+    protected $builtInPageFields = array(
+        'parent_id' => "page.parent_id*",
+        'template' => "page.templates_id*",
+        'name' => "page.name*",
+        'status' => "page.status*",
+        'modified_users_id' => "page.modified_users_id*",
+    );
 
     public function init()
     {
+        $info = self::getModuleInfo();
+        $version = $info['version'];
+
         parent::init();
+
         wire()->pages->addHookAfter('saveReady', $this, 'hookPagesSaveReady');
     }
 
 
     public function hookPagesSaveReady(HookEvent $event)
     {
+
         $this->watches_index = array();
-        $result = $this->db->query("SELECT `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
+        $result = $this->db->query("SELECT `field`, `templates`, `before`, `after`, `roles_users`, `subject`, `body` FROM `{$this->className}` ORDER BY `field`");
         while ($row = $result->fetch_assoc()) {
-            $this->watches_index[$row['field']] [$row['after']] [$row['before']] = array( 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
+            $this->watches_index[$row['field']] [$row['after']] [$row['before']] = array("templates" => $row['templates'], 'roles_users' => $row['roles_users'], 'subject' => $row['subject'], 'body' => $row['body']);
         }
 
-        $page    = $event->arguments[0];
+        $page = $event->arguments[0];
+
+        // Set this here so that modified_users_id is part of getChanges();
+        // https://processwire.com/talk/topic/9390-trackchanges-for-modified-user-id/?p=90548
+        $page->modifiedUser = $this->user; 
+
+        // Page template ID (this will be the ID of the new template if the template is changing).
+        $p_template_id = $page->template->id;
+
+        // page ID for use in sql...
+        $p_id = $page->id; 
+
         $changes = $page->getChanges();
 
         foreach ($changes as $change) {
-            $cid = wire()->fields->get($change)->id;
+
+            $builtInField = $this->isBuiltInField($change);
+            
+            if ($builtInField){
+                $cid = $change;
+            } else{
+                $cid = wire()->fields->get($change)->id;
+            }
 
             // Skip this changed field if no watches setup on it...
             if (!array_key_exists($cid, $this->watches_index)) {
                 continue;
             }
 
-            // read the new value for the field
-            $new = wire()->input->post->$change;
+            if ($change == "name"){
+                $name = "_pw_page_name";
+            } else {
+                $name = $change;
+            }
 
+            // read the new value for the field
+            $new = wire()->input->post->$name;
+       
             // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
             //if(!isset($new)) $new = 0;
+            //
+           foreach (wire()->input->post as $key => $val){
+               // echo $key . "-" . $val . "<br>";
+            }
 
             // pull the watches on the field+new value combination
             $watches = @$this->watches_index[$cid][(string) $new];
+
 
             // Try for wildcard matches on new field value if nothing more specific available
             if (empty($watches)) {
@@ -73,15 +119,32 @@ class ProcessFieldChangeNotifier extends Process
             if (empty($watches)) {
                 continue;
             }
+            
+            // setup variables for sql statement...
+            if ($builtInField){
+                $db_table = 'pages';
+                $db_field = $change;
+                $where    = 'id'; 
+            } else{
+                $db_table = $page->fields->$change->getTable();
+                $db_field = 'data';
+                $where    = 'pages_id';
+            }
 
-            // Get the old value of the field...
-            $db_field = $page->fields->$change->getTable();
-            $p_id     = $page->id;
-            $sql      = "SELECT `data` FROM `$db_field` WHERE `pages_id` = $p_id LIMIT 1";
-            $result   = $this->db->query($sql)->fetch_assoc();
-            $old      = $result['data'];
+             // Get the old value of the field...
+            $sql        = "SELECT `$db_field` FROM `$db_table` WHERE `$where` = $p_id LIMIT 1";
+            $result     = $this->db->query($sql)->fetch_assoc();
+            $old        = $result[$db_field];
 
             foreach ($watches as $watch_old => $d) {
+                
+                // check templates first, if no match then skip this watch.
+                $templates = explode("|", $d['templates']);
+                
+                if (!empty($templates)){
+                    if (!in_array($p_template_id, $templates)) continue;
+                }
+
                 // trigger match if watch has '*' (any value) as old value or if the actual old value of the field matches that of the watch
                 if ('*' == $watch_old || $watch_old == $old) {
                     $this->triggerMatch($page, $change, $watch_old, $old, $new, $d);
@@ -197,8 +260,13 @@ class ProcessFieldChangeNotifier extends Process
             ->set('name', $fname)
             ->set('old', $old)
             ->set('new', $new)
-            ;
-        $field = wire()->fields->get($fname);
+        ;
+
+        if ($this->isBuiltInField($fname)){
+            $field = $fname;
+        } else {
+            $field = wire()->fields->get($fname);
+        }
 
         $context['field'] = $field;
         $context['meta']  = $meta;
@@ -266,30 +334,42 @@ class ProcessFieldChangeNotifier extends Process
     }
 
 
-
     public function ___execute()
     {
+
+        // update the database schema if needed.
+        $this->updateSchema();
+
         $this->setFuel('processHeadline', 'Field Change Notifier');
 
-        $description = "<p class='description'>". nl2br($this->_("NB. Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.\nUse a single * in either value column as a wildcard.")) . "</p>";
+        $description = "<p class='description'>". nl2br($this->_("Watches are only evaluated when fields are saved to the DB and an actual change of value occurs.\nUse a single * in either value column as a wildcard.")) . "</p>";
 
         $result = $this->db->query("SELECT * FROM {$this->className} ORDER BY `field`, `after` DESC, `before` DESC");
 
         // generate the table of watches...
         $table = $this->modules->get("MarkupAdminDataTable");
         $table->setEncodeEntities(false);
-        $table->headerRow(array($this->_('When this field&#8230;'), $this->_('changes from this value&#8230;'), $this->_('to this value&#8230;'), $this->_('notify user(s) &#8230;'), $this->_('Delete')));
+        $table->headerRow(array($this->_('When this field'), $this->_('changes from this value'), $this->_('to this value'), $this->_('for template(s) ID'), $this->_('notify user(s)'), $this->_('Delete')));
 
         $n = 0;
         while ($row = $result->fetch_assoc()) {
             $n++;
             list($r, $u) = explode("\n", $row['roles_users']);
+            
+            // Set link text.
+            if ($this->isBuiltInField($row['field'])){
+                $link_text = $this->builtInPageFields[$row['field']]; 
+            } else{
+                $link_text = wire()->fields->get($row['field'])->name; 
+            }
 
+            if ($row['templates'] == "") $row['templates'] = "*";
             // output in table rows with edit link and delete checkbox
             $table->row(array(
-                wire()->fields->get($row['field'])->name => "edit/?id=$row[id]",
+                $link_text => "edit/?id=$row[id]",
                 $row['before'],
                 $row['after'],
+                $row['templates'],
                 self::expandRoleAndUserNames($r, $u, $this->_(" and ") . "&#8230;<br />"),
                 "<input type='checkbox' name='delete[]' value='$row[id]' />"
             ));
@@ -323,16 +403,23 @@ class ProcessFieldChangeNotifier extends Process
 
         if ($id > 0) {
             // Edit existing watch
-            $result = $this->db->query("SELECT `id`, `field`, `before`, `after`, `roles_users`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
-            list($id, $f, $b, $a, $ru, $subject, $body) = $result->fetch_array();
+            $result = $this->db->query("SELECT `id`, `field`, `templates`, `before`, `after`, `roles_users`, `subject`, `body` FROM {$this->className} WHERE `id`=$id");
+            list($id, $f, $t, $b, $a, $ru, $subject, $body) = $result->fetch_array();
             list($r, $u) = explode("\n", $ru);
-            $fname = wire()->fields->get($f)->name;
+            
+            if($this->isBuiltInField($f)){
+                $fname = $f;
+            } else {
+                $fname = wire()->fields->get($f)->name;
+            }
+        
             $this->setFuel('processHeadline', $this->_("Edit Watch on: ") . "$fname");
 
         } else {
             // Add new watch
             $id = 0;
             $f = '';
+            $t = '';
             $b = '*';
             $a = '*';
             $r = '';
@@ -367,6 +454,26 @@ class ProcessFieldChangeNotifier extends Process
             }
             $field->addOption($pwf->id, $name, $atts);
         }
+
+        // Add built-in page fields
+        foreach ($this->builtInPageFields as $k => $v){
+            $atts = array();
+            if ($k == $f) {
+                $atts['selected'] = 'selected';
+            }
+            $field->addOption($k, $v, $atts);
+            $form->add($field);
+        }
+
+        $field = $m->get("InputfieldAsmSelect");
+        $field->label = $this->_('Restrict to specific templates?');
+        $field->description = $this->_('If unset, this watch applies to all templates.');
+        $field->attr('id+name', 'templates');
+        foreach (wire('templates') as $tpl) {
+            if($tpl->flags & Template::flagSystem) continue; // skip system templates
+            $field->addOption($tpl->id, $tpl->name);
+        }
+        $field->attr('value', explode("|", $t));
         $form->add($field);
 
         $field = $m->get("InputfieldText");
@@ -445,6 +552,7 @@ class ProcessFieldChangeNotifier extends Process
     {
         $id = (int) $this->input->post->id;
         $f = $this->input->post->field;
+        $t = $this->input->post->templates;
         $b = $this->input->post->before;
         $a = $this->input->post->after;
         $r = $this->input->post->roles;
@@ -457,11 +565,16 @@ class ProcessFieldChangeNotifier extends Process
             $this->session->redirect("../"); // back to list
         }
 
-        $this->saveWatch($f, $b, $a, $r, $u, $subject, $body, $id);
+        $this->saveWatch($f, $t, $b, $a, $r, $u, $subject, $body, $id);
 
         $ru = self::expandRoleAndUserNames($r, $u, $this->_(' and '));
 
-        $fname = wire()->fields->get($f)->name;
+        if ($this->isBuiltInField($f)){
+            $fname = $this->builtInPageFields[$f];
+        } else {
+            $fname = wire()->fields->get($f)->name;
+        }
+        
         $this->message("Watching for field '$fname' changing from [$b] => [$a]. When it does, will notify user(s) $ru");
         $this->session->redirect("../"); // back to list
     }
@@ -487,9 +600,10 @@ class ProcessFieldChangeNotifier extends Process
     }
 
 
-    private function saveWatch($f, $b, $a, $r, $u, $subject, $body, $id = 0)
+    private function saveWatch($f, $t, $b, $a, $r, $u, $subject, $body, $id = 0)
     {
         $f = $this->db->escape_string($f);
+        $t = $this->db->escape_string(implode('|', $t));
         $b = $this->db->escape_string($b);
         $a = $this->db->escape_string($a);
         $r = implode('|', $r);
@@ -499,14 +613,17 @@ class ProcessFieldChangeNotifier extends Process
         $body    = $this->db->escape_string($body);
 
         if ($id == 0) {
-            $sql = "INSERT INTO {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
+            $sql = "INSERT INTO {$this->className} SET `field` = '$f', `templates` = '$t', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' ON DUPLICATE KEY UPDATE id = id;";
         } else {
-            $sql = "UPDATE      {$this->className} SET `field` = '$f', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' WHERE id = $id";
+            $sql = "UPDATE      {$this->className} SET `field` = '$f', `templates` = '$t', `before` = '$b', `after` = '$a', `roles_users` = '$ru', `subject` = '$subject', `body` = '$body' WHERE id = $id";
         }
 
         return $this->db->query($sql);
     }
 
+    private function isBuiltInField($field){
+        return array_key_exists($field, $this->builtInPageFields);
+    }
 
     public function ___install()
     {
@@ -516,6 +633,7 @@ class ProcessFieldChangeNotifier extends Process
             CREATE TABLE {$this->className} (
                 `id`          int unsigned NOT NULL auto_increment,
                 `field`       varchar(255)  NOT NULL DEFAULT '',
+                `templates`   varchar(255)  NOT NULL DEFAULT '',
                 `before`      varchar(255)  NOT NULL DEFAULT '',
                 `after`       varchar(255)  NOT NULL DEFAULT '',
                 `roles_users` varchar(255)  NOT NULL DEFAULT '',
@@ -535,6 +653,14 @@ _SQL;
         $p->save();
     }
 
+    private function updateSchema()
+    {
+        $result = wire('db')->query("SHOW COLUMNS FROM {$this->className} LIKE 'templates'");
+        if ($result->num_rows > 0) return; // templates column exists, so do nothing.
+
+        $sql = "ALTER TABLE {$this->className} ADD templates varchar(255) NOT NULL DEFAULT '' AFTER field";
+        if ($this->db->query($sql)) $this->message($this->_("Upgrade Complete."));
+    }
 
     public function ___uninstall()
     {
