@@ -95,8 +95,8 @@ class ProcessFieldChangeNotifier extends Process
             $new = wire()->input->post->$name;
        
             // This corrects inability to detect transition to unchecked on a checkbox field but might break other things (text)
-            //if(!isset($new)) $new = 0;
-
+            // if(!isset($new)) $new = 0;
+            
             // pull the watches on the field+new value combination
             $watches = @$this->watches_index[$cid][(string) $new];
 
