@@ -95,6 +95,7 @@ class ProcessFieldChangeNotifier extends Process
     {
         $r = self::expandPageNames($roles, __(' or ', __FILE__));
         $u = self::expandPageNames($ids,   __(' and ', __FILE__));
+        $o = array();
 
         if($r) {
             $o[] = __("with role(s)", __FILE__) . " $r";
@@ -104,7 +105,7 @@ class ProcessFieldChangeNotifier extends Process
             $o[] = $u;
         }
 
-        return implode($o, $glue);
+        return implode($glue, $o);
     }
 
 
@@ -256,13 +257,18 @@ class ProcessFieldChangeNotifier extends Process
 
     protected function sendEmail($to, $subject, $body)
     {
-        $headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
-        $headers[] = "MIME-Version: 1.0";
+                $headers[] = "MIME-Version: 1.0";
         $headers[] = "Content-type: text/plain; charset=UTF-8";
         $headers[] = "Reply-To: blackhole@".$this->config->httpHost;
 
-        $sent = mail($to, $subject, $body, join("\r\n",$headers));
-        return $sent;
+        $mail = wireMail(); 
+        $mail->to($to);
+        $mail->from(__("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>"); 
+        $mail->subject($subject);
+        $mail->body($body); 
+        $mail->headers($headers);
+        
+        return $mail->send();
     }
 
 
@@ -471,14 +477,14 @@ class ProcessFieldChangeNotifier extends Process
     {
         $count = 0;
 
-        if (!is_array($this->input->post->delete) || empty($this->input->post->delete)) {
+        if (!is_array($this->input->post->delete) || count($this->input->post->delete) < 1) {
             $this->message($this->_("Nothing to delete"));
             $this->session->redirect("../"); // back to list
         }
 
         foreach ($this->input->post->delete as $id) {
             $id = (int) $id;
-            $this->db->query("DELETE FROM {$this->className} WHERE id=$id");
+            $this->db->query("DELETE FROM {$this->className} WHERE id=".(int)$id);
             $count++;
         }
 
