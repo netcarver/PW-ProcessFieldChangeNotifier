@@ -257,13 +257,18 @@ class ProcessFieldChangeNotifier extends Process
 
     protected function sendEmail($to, $subject, $body)
     {
-        $headers[] = "From: " . __("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>";
-        $headers[] = "MIME-Version: 1.0";
+                $headers[] = "MIME-Version: 1.0";
         $headers[] = "Content-type: text/plain; charset=UTF-8";
         $headers[] = "Reply-To: blackhole@".$this->config->httpHost;
 
-        $sent = mail($to, $subject, $body, join("\r\n",$headers));
-        return $sent;
+        $mail = wireMail(); 
+        $mail->to($to);
+        $mail->from(__("Change Notifier", __FILE__) . " <changenotifier@{$this->config->httpHost}>"); 
+        $mail->subject($subject);
+        $mail->body($body); 
+        $mail->headers($headers);
+        
+        return $mail->send();
     }
 
 
